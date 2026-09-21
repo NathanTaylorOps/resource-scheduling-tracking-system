@@ -22,6 +22,9 @@ import {
   PermitStatus,
   InspectionType,
   InspectionStatus,
+  ReinspectionChannel,
+  RenewalPattern,
+  CoverageType,
 } from '../lib/enums';
 
 const prisma = new PrismaClient();
@@ -52,6 +55,8 @@ async function main() {
   await prisma.permit.deleteMany();
   await prisma.weatherCache.deleteMany();
   await prisma.worker.deleteMany();
+  await prisma.subcontractorCOI.deleteMany();
+  await prisma.subcontractor.deleteMany();
   await prisma.job.deleteMany();
 
   // ---------------------------------------------------------------------
@@ -123,16 +128,90 @@ async function main() {
   const [cedarHollow, harborPoint, orchardRidge, mapleCrossing, lakeview] = jobs;
 
   // ---------------------------------------------------------------------
+  // Subcontractor firms — entity-level license and insurance standing,
+  // tracked separately from the person-level certifications each firm's own
+  // crew members hold (see the long comment on
+  // WorkerCertification.renewalPattern in schema.prisma and
+  // lib/domain/subcontractors.ts). Deliberately spans all three compliance
+  // reads a GM would actually see on the list page: Salvador Electric has a
+  // COI coverage expiring soon, Cho Plumbing's trade license has already
+  // lapsed even though Renata's own training is current, and Ridgeline is
+  // fully current but hasn't been dispatched to a job yet — which is also
+  // why it has no individual crew member on file, the natural fit for
+  // Orchard Ridge's still-unfilled excavation role below.
+  // ---------------------------------------------------------------------
+  const salvadorElectric = await prisma.subcontractor.create({
+    data: {
+      businessName: 'Salvador Electric LLC',
+      trade: 'Electrical',
+      licenseNumber: 'WA-ELE-88214',
+      licenseClass: 'Master Electrician',
+      licenseIssuingAuthority: 'Washington State Department of Labor & Industries',
+      licenseExpiryDate: daysFromNow(500),
+      coiRecords: {
+        create: [
+          { coverageType: CoverageType.GENERAL_LIABILITY, carrier: 'Pinnacle Mutual', policyNumber: 'GL-4471982', effectiveDate: daysAgo(165), expiryDate: daysFromNow(200), coverageLimit: 2000000, additionalInsured: true },
+          { coverageType: CoverageType.WORKERS_COMP, carrier: 'Washington State Fund', policyNumber: 'WC-119834', effectiveDate: daysAgo(165), expiryDate: daysFromNow(200) },
+          // Deliberately expiring soon — the COI-coverage-level warning case.
+          { coverageType: CoverageType.COMMERCIAL_AUTO, carrier: 'Pinnacle Mutual', policyNumber: 'CA-88214', effectiveDate: daysAgo(340), expiryDate: daysFromNow(25) },
+        ],
+      },
+    },
+  });
+  const choPlumbing = await prisma.subcontractor.create({
+    data: {
+      businessName: 'Cho Plumbing & Mechanical Inc.',
+      trade: 'Plumbing',
+      licenseNumber: 'WA-PLM-55021',
+      licenseClass: 'Class A Plumbing Contractor',
+      licenseIssuingAuthority: 'Washington State Department of Labor & Industries',
+      // Deliberately lapsed — the firm-level blocked-path example. The
+      // business's eligibility to work has expired even though Renata's own
+      // certifications, tracked separately below, are current.
+      licenseExpiryDate: daysAgo(10),
+      notes: 'License renewal submitted to L&I — confirmation pending. Hold on dispatching to new jobs until reinstated.',
+      coiRecords: {
+        create: [
+          { coverageType: CoverageType.GENERAL_LIABILITY, carrier: 'Cascade Underwriters', policyNumber: 'GL-33102', effectiveDate: daysAgo(215), expiryDate: daysFromNow(150), coverageLimit: 1000000, additionalInsured: true },
+          { coverageType: CoverageType.WORKERS_COMP, carrier: 'Washington State Fund', policyNumber: 'WC-88201', effectiveDate: daysAgo(215), expiryDate: daysFromNow(150) },
+        ],
+      },
+    },
+  });
+  // No linked worker on purpose — vetted and on file, not yet dispatched.
+  await prisma.subcontractor.create({
+    data: {
+      businessName: 'Ridgeline Excavation & Grading Co.',
+      trade: 'Excavation & Grading',
+      licenseNumber: 'WA-EXC-30044',
+      licenseClass: 'General Engineering Contractor',
+      licenseIssuingAuthority: 'Washington State Department of Labor & Industries',
+      licenseExpiryDate: daysFromNow(300),
+      notes: 'Vetted and on file for Orchard Ridge sitework; not yet dispatched, so no individual crew member is on file until mobilization.',
+      coiRecords: {
+        create: [
+          { coverageType: CoverageType.GENERAL_LIABILITY, carrier: 'Cascade Underwriters', policyNumber: 'GL-77410', effectiveDate: daysAgo(90), expiryDate: daysFromNow(180), coverageLimit: 2000000, additionalInsured: true },
+          { coverageType: CoverageType.WORKERS_COMP, carrier: 'Washington State Fund', policyNumber: 'WC-77410', effectiveDate: daysAgo(90), expiryDate: daysFromNow(180) },
+        ],
+      },
+    },
+  });
+
+  // ---------------------------------------------------------------------
   // Workers — a mix of direct employees and subcontractors, matching a
-  // realistic small-mid GC crew composition.
+  // realistic small-mid GC crew composition, plus one owner/GM-adjacent
+  // record: a principal who isn't scheduled to jobs the way field crew is,
+  // but shows up in the field documentation below the way an owner actually
+  // does — periodic site visits, not day-to-day staffing.
   // ---------------------------------------------------------------------
   const workers = await Promise.all([
+    prisma.worker.create({ data: { name: 'Walt Ferreira', trade: 'Owner / Principal', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(1400) } }),
     prisma.worker.create({ data: { name: 'Dale Petrenko', trade: 'Site Superintendent', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(900) } }),
     prisma.worker.create({ data: { name: 'Marcus Ibe', trade: 'Carpenter Foreman', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(720) } }),
     prisma.worker.create({ data: { name: 'Priya Nandan', trade: 'Carpenter', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(500) } }),
     prisma.worker.create({ data: { name: 'Ollie Fenwick', trade: 'Carpenter', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(310) } }),
-    prisma.worker.create({ data: { name: 'Teo Salvador', trade: 'Electrician', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(600) } }),
-    prisma.worker.create({ data: { name: 'Renata Cho', trade: 'Plumber', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(480) } }),
+    prisma.worker.create({ data: { name: 'Teo Salvador', trade: 'Electrician', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(600), subcontractorId: salvadorElectric.id } }),
+    prisma.worker.create({ data: { name: 'Renata Cho', trade: 'Plumber', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(480), subcontractorId: choPlumbing.id } }),
     prisma.worker.create({ data: { name: 'Big Sam Okonkwo', trade: 'Heavy Equipment Operator', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(650) } }),
     prisma.worker.create({ data: { name: 'Jules Whitfield', trade: 'Laborer', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(150) } }),
     // Project managers run multiple sites at once rather than living on one
@@ -142,22 +221,38 @@ async function main() {
     prisma.worker.create({ data: { name: 'Renee Castellanos', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(560) } }),
     prisma.worker.create({ data: { name: 'Kenji Osei', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(410) } }),
   ]);
-  const [dale, marcus, priya, ollie, teo, renata, bigSam, jules, renee, kenji] = workers;
+  const [walt, dale, marcus, priya, ollie, teo, renata, bigSam, jules, renee, kenji] = workers;
 
-  // Certifications — a deliberate spread of valid, expiring-soon, and
-  // expired so the dashboard has something real to flag.
+  // Certifications — a deliberate spread across all four renewal patterns
+  // (see the schema comment on WorkerCertification.renewalPattern), not just
+  // a spread of valid/expiring/expired dates. OSHA 10/30 cards never
+  // formally expire, so every one below is INFORMAL_RECENCY rather than the
+  // HARD_EXPIRY default — expiryDate on those rows is the informal
+  // recommended-refresh-by date, not a real wall. Walt's and Renee's are
+  // deliberately past that date to show 'aging' as distinct from 'expired':
+  // a real gap, not a hard stop — and a realistic one, since it's usually
+  // the owner and the longest-tenured PM whose own paperwork lags behind
+  // the field crew's, not the other way around.
   await prisma.workerCertification.createMany({
     data: [
-      { workerId: dale.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(1000), expiryDate: daysFromNow(400) },
-      { workerId: dale.id, certType: 'First Aid / CPR', issuingBody: 'Red Cross', issueDate: daysAgo(700), expiryDate: daysFromNow(20) }, // expiring soon
-      { workerId: marcus.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(900), expiryDate: daysFromNow(600) },
-      { workerId: marcus.id, certType: 'Confined Space Entry', issuingBody: 'Coastwood Internal Training', issueDate: daysAgo(400), expiryDate: daysAgo(5) }, // expired
-      { workerId: priya.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(500), expiryDate: daysFromNow(550) },
+      { workerId: walt.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(1500), expiryDate: daysAgo(200), renewalPattern: RenewalPattern.INFORMAL_RECENCY }, // aging
+      { workerId: dale.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(1000), expiryDate: daysFromNow(400), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
+      { workerId: dale.id, certType: 'First Aid / CPR', issuingBody: 'Red Cross', issueDate: daysAgo(700), expiryDate: daysFromNow(20) }, // expiring soon (HARD_EXPIRY default — a real wall)
+      { workerId: marcus.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(900), expiryDate: daysFromNow(600), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
+      { workerId: marcus.id, certType: 'Confined Space Entry', issuingBody: 'Coastwood Internal Training', issueDate: daysAgo(400), expiryDate: daysAgo(5) }, // expired (HARD_EXPIRY default)
+      { workerId: priya.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(500), expiryDate: daysFromNow(550), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
+      // Renewal filed within the 90-day window EPA RRP allows — valid past
+      // its nominal expiry while the renewal is pending, not expired. Ties
+      // to the lead-safe-practices toolbox talk below, which Ollie attended.
+      { workerId: ollie.id, certType: 'EPA RRP Certified Renovator', issuingBody: 'EPA Lead-Safe Certification Program', issueDate: daysAgo(1850), expiryDate: daysAgo(20), renewalPattern: RenewalPattern.GRACE_PERIOD, renewalFiledDate: daysAgo(130) },
+      // Teo's own trade license, distinct from Salvador Electric's business
+      // license tracked on the Subcontractor record above.
+      { workerId: teo.id, certType: 'Master Electrician License', issuingBody: 'Washington State Department of Labor & Industries', issueDate: daysAgo(300), expiryDate: daysFromNow(430), renewalPattern: RenewalPattern.LICENSE_CYCLE },
       { workerId: bigSam.id, certType: 'Forklift Operator', issuingBody: 'Coastwood Internal Training', issueDate: daysAgo(300), expiryDate: daysFromNow(45) },
-      { workerId: bigSam.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(800), expiryDate: daysFromNow(700) },
-      { workerId: jules.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(120), expiryDate: daysFromNow(1100) },
-      { workerId: renee.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(560), expiryDate: daysFromNow(280) },
-      { workerId: kenji.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(410), expiryDate: daysFromNow(450) },
+      { workerId: bigSam.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(800), expiryDate: daysFromNow(700), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
+      { workerId: jules.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(120), expiryDate: daysFromNow(1100), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
+      { workerId: renee.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(1125), expiryDate: daysAgo(30), renewalPattern: RenewalPattern.INFORMAL_RECENCY }, // aging
+      { workerId: kenji.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(410), expiryDate: daysFromNow(450), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
     ],
   });
 
@@ -694,6 +789,12 @@ async function main() {
       // Normally sits at Maple Crossing but is booked out to Cedar Hollow
       // for a short haul-off window.
       { equipmentId: dumpTrailer.id, jobId: cedarHollow.id, start: daysFromNow(6), end: daysFromNow(9) },
+      // A second, differently-shaped conflict: booked forward on an asset
+      // that's currently DOWN_FOR_SERVICE with no return-to-service date on
+      // file — a warning on the job it's booked to, not a hard block, since
+      // a future booking's problem shouldn't stop today's readiness the way
+      // an asset actually on-site and broken would.
+      { equipmentId: compressor.id, jobId: harborPoint.id, start: daysFromNow(4), end: daysFromNow(6) },
     ],
   });
 
@@ -725,6 +826,11 @@ async function main() {
             completedDate: daysAgo(5),
             inspectorNotes:
               'Shear wall nailing pattern at grid line C does not match the approved schedule. Re-nail and request re-inspection before proceeding to insulation.',
+            correctionNotes:
+              'Shear panels re-nailed at grid line C per the corrected nailing schedule; photos logged to the job file before requesting re-inspection.',
+            correctionResponsible: 'Marcus Ibe, Carpenter Foreman',
+            reinspectionChannel: ReinspectionChannel.IN_PERSON,
+            reinspectionScheduledDate: daysFromNow(3),
           },
           { inspectionType: InspectionType.INSULATION, sequence: 4, status: InspectionStatus.NOT_SCHEDULED },
           { inspectionType: InspectionType.FINAL, sequence: 5, status: InspectionStatus.NOT_SCHEDULED },
@@ -906,6 +1012,34 @@ async function main() {
       },
     },
   });
+  // Lakeview is light-commercial tenant-improvement work, which routinely
+  // pulls concurrent permits from more than one authority on different
+  // clocks — unlike the single building-department permit each residential
+  // job above needs. The lapsed building permit above is what's actually
+  // holding the job; the fire and health permits are on separate tracks,
+  // and one of them is fine, which a job-level-only view would hide.
+  await prisma.permit.create({
+    data: {
+      jobId: lakeview.id,
+      permitType: PermitType.FIRE,
+      permitNumber: 'EFR-FIR-2214',
+      issuingAuthority: "Eastside Fire & Rescue — Fire Marshal's Office",
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(60),
+      issuedDate: daysAgo(52),
+      expiryDate: daysFromNow(310),
+      inspections: { create: [{ inspectionType: InspectionType.FINAL, sequence: 1, status: InspectionStatus.SCHEDULED, scheduledDate: daysFromNow(8) }] },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: lakeview.id,
+      permitType: PermitType.HEALTH,
+      issuingAuthority: 'Public Health — Seattle & King County',
+      status: PermitStatus.APPLIED,
+      appliedDate: daysAgo(18),
+    },
+  });
 
   // ---------------------------------------------------------------------
   // Daily field log — standard GC documentation, the kind that matters in
@@ -916,13 +1050,21 @@ async function main() {
     data: [
       { jobId: cedarHollow.id, logDate: daysAgo(9), weatherSummary: 'Overcast, high 54°F, light rain PM', crewCount: 5, workPerformed: 'Continued exterior wall framing on the north elevation; set headers for the great room windows.', submittedBy: dale.id },
       { jobId: cedarHollow.id, logDate: daysAgo(7), weatherSummary: 'Clear, high 61°F', crewCount: 6, workPerformed: 'Completed second-floor deck sheathing; began roof truss layout.', submittedBy: dale.id },
+      { jobId: cedarHollow.id, logDate: daysAgo(6), weatherSummary: 'Clear, high 59°F', crewCount: 5, workPerformed: 'Owner (Walt Ferreira) and the project architect on site for a pre-drywall walk-through of framing and rough-ins; no issues raised.', submittedBy: dale.id },
       { jobId: cedarHollow.id, logDate: daysAgo(5), weatherSummary: 'Rain most of the day, high 49°F', crewCount: 4, workPerformed: 'Framing inspection with the county (failed — shear wall nailing at grid C); crew shifted to interior blocking while the re-nail plan was worked out.', delaysNotes: 'Framing inspection failed — see permit record. Re-nailing grid line C before re-inspection can be requested.', submittedBy: dale.id },
       { jobId: cedarHollow.id, logDate: daysAgo(2), weatherSummary: 'Partly cloudy, high 58°F', crewCount: 5, workPerformed: 'Re-nailed shear panels at grid line C per the corrected schedule; requested re-inspection.', submittedBy: dale.id },
       { jobId: harborPoint.id, logDate: daysAgo(8), weatherSummary: 'Clear, high 64°F', crewCount: 3, workPerformed: 'Demo of the existing kitchen and adjacent bath complete; debris hauled off-site.', submittedBy: kenji.id },
+      // Hidden condition surfaced during demo — the kind of remodel-specific
+      // find that never shows up on a new-build job, logged the way a real
+      // GC logs it: photographed, flagged for the PM, and worked through
+      // before closing the wall back up.
+      { jobId: harborPoint.id, logDate: daysAgo(6), weatherSummary: 'Overcast, high 55°F', crewCount: 3, workPerformed: 'Opened up the north bathroom wall during demo and found an old, undocumented plumbing patch with minor water staining on the subfloor. Photographed and flagged for the PM before closing the wall back up.', delaysNotes: 'Held the wall open an extra half-day pending PM review of the hidden condition; no structural concern found, cleared to proceed.', submittedBy: kenji.id },
       { jobId: harborPoint.id, logDate: daysAgo(4), weatherSummary: 'Overcast, high 57°F', crewCount: 3, workPerformed: 'Rough electrical for the kitchen relocation passed inspection; plumbing on standby pending fixture delivery.', delaysNotes: 'Fixture delivery delayed by the supplier — plumbing rough-in pushed two days.', submittedBy: kenji.id },
+      { jobId: harborPoint.id, logDate: daysAgo(2), weatherSummary: 'Partly cloudy, high 60°F', crewCount: 4, workPerformed: 'Homeowner stopped by mid-morning to review tile selection with the crew ahead of the shower pan install.', submittedBy: kenji.id },
       { jobId: harborPoint.id, logDate: daysAgo(1), weatherSummary: 'Clear, high 62°F', crewCount: 4, workPerformed: 'Insulation pass complete in the kitchen and bath; drywall crew scheduled to start Monday.', submittedBy: kenji.id },
       { jobId: mapleCrossing.id, logDate: daysAgo(6), weatherSummary: 'Clear, high 68°F', crewCount: 4, workPerformed: 'Final grading and landscaping prep around the foundation perimeter; dump trailer hauling excess spoils off-site.', submittedBy: kenji.id },
       { jobId: mapleCrossing.id, logDate: daysAgo(3), weatherSummary: 'Clear, high 70°F', crewCount: 3, workPerformed: 'Punch-list walk with the PM; touch-up paint and final plumbing fixture install.', submittedBy: kenji.id },
+      { jobId: mapleCrossing.id, logDate: daysAgo(1), weatherSummary: 'Clear, high 71°F', crewCount: 2, workPerformed: 'Homeowner and their interior designer walked the finished spaces to confirm the paint touch-up list ahead of substantial completion.', submittedBy: kenji.id },
     ],
   });
 
@@ -986,6 +1128,7 @@ async function main() {
   });
 
   const equipmentCount = await prisma.equipment.count();
+  const subcontractorCount = await prisma.subcontractor.count();
   const roleRequirementCount = await prisma.jobRoleRequirement.count();
   const reservationCount = await prisma.equipmentReservation.count();
   const permitCount = await prisma.permit.count();
@@ -993,10 +1136,10 @@ async function main() {
   const dailyLogCount = await prisma.dailyLog.count();
   const safetyMeetingCount = await prisma.safetyMeeting.count();
   console.log(
-    `Seeded ${jobs.length} jobs, ${workers.length} workers, ${equipmentCount} equipment items, ` +
-      `${roleRequirementCount} role requirements, ${reservationCount} equipment reservations, ` +
-      `${permitCount} permits (${inspectionCount} inspections), ${dailyLogCount} daily logs, ` +
-      `${safetyMeetingCount} toolbox talks.`,
+    `Seeded ${jobs.length} jobs, ${workers.length} workers, ${subcontractorCount} subcontractor firms, ` +
+      `${equipmentCount} equipment items, ${roleRequirementCount} role requirements, ` +
+      `${reservationCount} equipment reservations, ${permitCount} permits (${inspectionCount} inspections), ` +
+      `${dailyLogCount} daily logs, ${safetyMeetingCount} toolbox talks.`,
   );
 }
 
