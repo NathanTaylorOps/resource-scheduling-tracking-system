@@ -69,6 +69,19 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
   );
   const conflictedReservationIds = new Set(reservationConflicts.flatMap((c) => [c.first.id, c.second.id]));
 
+  // Custody/location — currentJobId and currentWorkerId are soft pointers
+  // (no Prisma relation; see the schema comment), a projection of the
+  // latest scan rather than an enforced foreign key, so they're resolved to
+  // display names with their own small lookups rather than an `include`.
+  const [currentJob, currentWorker] = await Promise.all([
+    equipment.currentJobId
+      ? prisma.job.findUnique({ where: { id: equipment.currentJobId }, select: { id: true, name: true } })
+      : null,
+    equipment.currentWorkerId
+      ? prisma.worker.findUnique({ where: { id: equipment.currentWorkerId }, select: { id: true, name: true } })
+      : null,
+  ]);
+
   return (
     <div className="space-y-6">
       <Link href="/equipment" className="text-sm text-zinc-500 hover:underline">
@@ -80,6 +93,23 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
           <h1 className="text-2xl font-bold tracking-tight">{equipment.name}</h1>
           <p className="text-sm text-zinc-500">
             {equipment.category} · {equipment.qrCode} · {equipment.status.replace(/_/g, ' ').toLowerCase()}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            {currentJob ? (
+              <>
+                On site:{' '}
+                <Link href={`/jobs/${currentJob.id}`} className="font-medium text-zinc-700 hover:underline">
+                  {currentJob.name}
+                </Link>
+                {currentWorker && <> · checked out to {currentWorker.name}</>}
+              </>
+            ) : equipment.locationNote ? (
+              equipment.locationNote
+            ) : currentWorker ? (
+              `With ${currentWorker.name}`
+            ) : (
+              'In storage'
+            )}
           </p>
           <Link
             href={`/equipment/${equipment.id}/scan`}
