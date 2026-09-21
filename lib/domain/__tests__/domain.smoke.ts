@@ -9,7 +9,7 @@
  */
 
 import { getComplianceStatus, recordCompletion, earliestDue } from '../compliance';
-import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate } from '../forecasting';
+import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate, bucketForecast } from '../forecasting';
 import { findOverlaps, calculateUtilization, findUnfilledRoles } from '../scheduling';
 import { getCertificationStatus, canAssignWorker } from '../certifications';
 import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePlan } from '../maintenance';
@@ -91,21 +91,69 @@ console.log('\nforecasting.ts — utilization-based next-due projection');
 
   const hybridDue = resolveHybridDueDate(new Date('2027-01-01'), 30, new Date('2026-09-20'));
   assertEqual('hybrid trigger picks the usage projection when it comes first', hybridDue.toISOString().slice(0, 10), '2026-10-20');
+
+  const now = new Date('2026-09-20');
+  assertEqual('a due date 10 days out buckets into 0-30', bucketForecast(new Date('2026-09-30'), now), '0-30');
+  assertEqual('a due date 45 days out buckets into 31-60', bucketForecast(new Date('2026-11-04'), now), '31-60');
+  assertEqual('a due date 75 days out buckets into 61-90', bucketForecast(new Date('2026-12-04'), now), '61-90');
+  assertEqual('a due date 120 days out buckets into beyond', bucketForecast(new Date('2027-01-18'), now), 'beyond');
 }
 
 console.log('\nscheduling.ts — overlap detection, utilization, and role coverage');
 {
   const conflicts = findOverlaps([
-    { id: 'a1', workerId: 'w1', jobId: 'j1', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
-    { id: 'a2', workerId: 'w1', jobId: 'j2', start: new Date('2026-09-22T14:00'), end: new Date('2026-09-22T18:00') },
-    { id: 'a3', workerId: 'w2', jobId: 'j1', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
+    { id: 'a1', workerId: 'w1', jobId: 'j1', roleOnJob: 'Carpenter', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
+    { id: 'a2', workerId: 'w1', jobId: 'j2', roleOnJob: 'Carpenter', start: new Date('2026-09-22T14:00'), end: new Date('2026-09-22T18:00') },
+    { id: 'a3', workerId: 'w2', jobId: 'j1', roleOnJob: 'Carpenter', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
   ]);
   assertEqual('overlapping assignments for the same worker are flagged', conflicts.length, 1);
   assertEqual('different workers on the same hours are not a conflict', conflicts.some((c) => c.workerId === 'w2'), false);
 
+  // A Project Manager at this company size runs several jobs' worth of
+  // oversight at once — two overlapping PM assignments are how that role
+  // normally looks, not a double-booking (this is the crew-readiness false
+  // positive real PMs like Kenji and Renee used to trip on every job they
+  // managed concurrently).
+  const pmOverlap = findOverlaps([
+    { id: 'p1', workerId: 'pm1', jobId: 'j1', roleOnJob: 'Project Manager', start: new Date('2026-09-01'), end: new Date('2026-12-01') },
+    { id: 'p2', workerId: 'pm1', jobId: 'j2', roleOnJob: 'Project Manager', start: new Date('2026-10-01'), end: new Date('2027-01-01') },
+  ]);
+  assertEqual('two overlapping Project Manager assignments for the same PM are not a conflict', pmOverlap.length, 0);
+
+  // But a PM stretch overlapping a hands-on assignment for the same worker
+  // still means physically being in two places — only a pair where BOTH
+  // sides are oversight roles is exempt.
+  const mixedOverlap = findOverlaps([
+    { id: 'm1', workerId: 'w3', jobId: 'j1', roleOnJob: 'Project Manager', start: new Date('2026-09-01'), end: new Date('2026-12-01') },
+    { id: 'm2', workerId: 'w3', jobId: 'j2', roleOnJob: 'Carpenter', start: new Date('2026-10-01'), end: new Date('2026-10-15') },
+  ]);
+  assertEqual('an oversight assignment overlapping a hands-on assignment for the same worker is still a conflict', mixedOverlap.length, 1);
+
+  // The old adjacent-pairs-only sweep sorted by start and only ever compared
+  // neighbors, so a short assignment nested inside a longer one for the same
+  // worker was never checked against it once a third assignment sorted
+  // between them. w4 here has a five-month stretch (n1), a short job fully
+  // inside it (n2), and another short job that starts after n2 ends but is
+  // still inside n1 (n3) — sorted by start this is n1, n2, n3, so a
+  // neighbors-only sweep checks n1-n2 and n2-n3 but never n1-n3, even though
+  // n1 and n3 genuinely overlap. n2 and n3 themselves don't overlap each
+  // other (n2 ends 2026-09-20, n3 starts 2026-10-01), so the correct total
+  // is exactly two conflicts — n1-n2 and n1-n3 — not three.
+  const nestedOverlap = findOverlaps([
+    { id: 'n1', workerId: 'w4', jobId: 'j1', roleOnJob: 'Carpenter', start: new Date('2026-09-01'), end: new Date('2027-02-01') },
+    { id: 'n2', workerId: 'w4', jobId: 'j2', roleOnJob: 'Carpenter', start: new Date('2026-09-10'), end: new Date('2026-09-20') },
+    { id: 'n3', workerId: 'w4', jobId: 'j3', roleOnJob: 'Carpenter', start: new Date('2026-10-01'), end: new Date('2026-10-10') },
+  ]);
+  assertEqual('a non-adjacent nested overlap (n1-n3) is caught, alongside the neighbor pair n1-n2, and nothing else', nestedOverlap.length, 2);
+  assertEqual(
+    'the nested pair (n1-n3) specifically is among the conflicts, not just the neighbor pair n1-n2',
+    nestedOverlap.some((c) => (c.first.id === 'n1' && c.second.id === 'n3') || (c.first.id === 'n3' && c.second.id === 'n1')),
+    true,
+  );
+
   const utilization = calculateUtilization({
     assignments: [
-      { id: 'a1', workerId: 'w1', jobId: 'j1', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
+      { id: 'a1', workerId: 'w1', jobId: 'j1', roleOnJob: 'Carpenter', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
     ],
     periodStart: new Date('2026-09-22T00:00'),
     periodEnd: new Date('2026-09-23T00:00'),
@@ -227,6 +275,39 @@ console.log('\ncertifications.ts — expiry status and assignment gating');
     now,
   );
   assertEqual('a genuinely expired cert still blocks assignment regardless of pattern', trueExpiredEligibility.eligible, false);
+
+  // Two records for the same certType — the expired card being replaced,
+  // still on file, plus the new one already issued. A worker who holds a
+  // duplicate this way is eligible, whichever record happens to come first.
+  const duplicateCertStaleFirst = canAssignWorker(
+    ['confined_space'],
+    [
+      { certType: 'confined_space', expiryDate: new Date('2026-01-01') }, // expired
+      { certType: 'confined_space', expiryDate: new Date('2027-01-01') }, // current
+    ],
+    now,
+  );
+  assertEqual('holding a current cert alongside an expired duplicate is eligible, even when the expired one is listed first', duplicateCertStaleFirst.eligible, true);
+
+  const duplicateCertCurrentFirst = canAssignWorker(
+    ['confined_space'],
+    [
+      { certType: 'confined_space', expiryDate: new Date('2027-01-01') }, // current
+      { certType: 'confined_space', expiryDate: new Date('2026-01-01') }, // expired
+    ],
+    now,
+  );
+  assertEqual('the same duplicate cert reads as eligible regardless of which record is listed first', duplicateCertCurrentFirst.eligible, true);
+
+  const duplicateCertAllExpired = canAssignWorker(
+    ['confined_space'],
+    [
+      { certType: 'confined_space', expiryDate: new Date('2026-01-01') },
+      { certType: 'confined_space', expiryDate: new Date('2026-02-01') },
+    ],
+    now,
+  );
+  assertEqual('a duplicate cert where every on-file record has expired still blocks assignment', duplicateCertAllExpired.eligible, false);
 }
 
 console.log('\nsubcontractors.ts — entity-level COI and license compliance');
