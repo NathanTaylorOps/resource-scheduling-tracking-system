@@ -79,6 +79,19 @@ export function applyCompletionToHierarchy(
 /**
  * Filters a due-soon list so a child plan already covered by an
  * about-to-fire parent doesn't appear as a second, duplicate line item.
+ *
+ * Deliberately its own check rather than a call to isChildCoveredByParent
+ * above: that function answers "did completing the parent just now cover
+ * this child," which needs an actual completedAtValue from a real
+ * completion event. This one answers a display-time question with no
+ * completion in hand yet — "are the parent and child nominally due the same
+ * cycle" — so the two can't share a call, only the nesting rule itself,
+ * which is why it's re-checked here rather than re-derived differently.
+ * That rule includes the same unit guard isChildCoveredByParent has: a
+ * child and parent on different counters (one on CALENDAR_DAYS, say, the
+ * other on RUN_HOURS) can never nest, whatever their raw interval/due
+ * numbers happen to be, since those numbers aren't measuring the same
+ * thing.
  */
 export function excludeCoveredChildren(
   duePlans: MaintenancePlan[],
@@ -88,6 +101,7 @@ export function excludeCoveredChildren(
     if (!plan.parentPlanId) return true;
     const parent = allPlans.find((p) => p.id === plan.parentPlanId);
     if (!parent) return true;
+    if (plan.schedule.unit !== parent.schedule.unit) return true;
     // If the parent is due the same cycle and nests this child evenly,
     // the parent's own work order will cover it — leave it off the list.
     const nestsEvenly = parent.schedule.intervalValue % plan.schedule.intervalValue === 0;

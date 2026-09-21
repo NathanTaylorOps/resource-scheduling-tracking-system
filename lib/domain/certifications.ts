@@ -138,19 +138,25 @@ export function canAssignWorker(
   const missingOrExpired: string[] = [];
 
   for (const required of requiredCertTypes) {
-    const held = workerCertifications.find((c) => c.certType === required);
-    if (!held) {
+    const heldRecords = workerCertifications.filter((c) => c.certType === required);
+    if (heldRecords.length === 0) {
       missingOrExpired.push(required);
       continue;
     }
-    const { status } = getCertificationStatus(
-      held.expiryDate,
-      now,
-      undefined,
-      held.renewalPattern,
-      held.renewalFiledDate,
+
+    // A worker can have more than one record for the same certType — a
+    // renewal filed alongside the card it replaces, say. Picking just the
+    // first match (by whatever order the records happen to arrive in) would
+    // make eligibility depend on array order rather than on whether the
+    // worker actually currently holds the credential: they hold it if ANY
+    // on-file record for this type isn't expired, not only if the first one
+    // isn't.
+    const allExpired = heldRecords.every(
+      (held) =>
+        getCertificationStatus(held.expiryDate, now, undefined, held.renewalPattern, held.renewalFiledDate).status ===
+        'expired',
     );
-    if (status === 'expired') {
+    if (allExpired) {
       missingOrExpired.push(required);
     }
   }
