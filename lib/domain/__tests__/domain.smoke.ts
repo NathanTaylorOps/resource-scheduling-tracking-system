@@ -16,6 +16,7 @@ import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePla
 import { computeReadiness, permitsStatusFrom } from '../readiness';
 import { custodyUpdateFor } from '../custody';
 import { findEquipmentConflicts } from '../equipment';
+import { evaluateSubcontractorCompliance } from '../subcontractors';
 
 let passed = 0;
 let failed = 0;
@@ -167,6 +168,105 @@ console.log('\ncertifications.ts — expiry status and assignment gating');
   );
   assertEqual('missing a required cert blocks the assignment', eligibility.eligible, false);
   assertEqual('the missing cert is named', eligibility.missingOrExpired, ['first_aid']);
+
+  // --- renewal patterns: one expiryDate field, four different real shapes ---
+
+  const defaultPattern = getCertificationStatus(new Date('2026-09-01'), now);
+  assertEqual('no renewalPattern given defaults to HARD_EXPIRY (unchanged prior behavior)', defaultPattern.status, 'expired');
+
+  const hardExpiry = getCertificationStatus(new Date('2026-09-01'), now, undefined, 'HARD_EXPIRY');
+  assertEqual('HARD_EXPIRY past its date reads as a real expired, not a softer status', hardExpiry.status, 'expired');
+
+  const licenseCycle = getCertificationStatus(new Date('2026-09-01'), now, undefined, 'LICENSE_CYCLE');
+  assertEqual('LICENSE_CYCLE behaves like HARD_EXPIRY — a state license clock is still a real wall', licenseCycle.status, 'expired');
+
+  const informalPastWindow = getCertificationStatus(new Date('2026-09-01'), now, undefined, 'INFORMAL_RECENCY');
+  assertEqual('INFORMAL_RECENCY past its informal window reads as aging, not expired', informalPastWindow.status, 'aging');
+
+  const informalStillCurrent = getCertificationStatus(new Date('2027-01-01'), now, undefined, 'INFORMAL_RECENCY');
+  assertEqual('INFORMAL_RECENCY well within its window is still valid', informalStillCurrent.status, 'valid');
+
+  const graceFiledOnTime = getCertificationStatus(
+    new Date('2026-09-01'),
+    now,
+    undefined,
+    'GRACE_PERIOD',
+    new Date('2026-05-01'), // filed well over 90 days before the 2026-09-01 expiry
+  );
+  assertEqual('GRACE_PERIOD filed on time stays valid-but-pending past its nominal expiry', graceFiledOnTime.status, 'renewal_pending');
+
+  const graceFiledLate = getCertificationStatus(
+    new Date('2026-09-01'),
+    now,
+    undefined,
+    'GRACE_PERIOD',
+    new Date('2026-08-20'), // filed under 90 days before expiry — too late for the grace rule
+  );
+  assertEqual('GRACE_PERIOD filed too close to expiry is a plain expired, not renewal_pending', graceFiledLate.status, 'expired');
+
+  const graceNeverFiled = getCertificationStatus(new Date('2026-09-01'), now, undefined, 'GRACE_PERIOD');
+  assertEqual('GRACE_PERIOD with no renewal on file at all is a plain expired', graceNeverFiled.status, 'expired');
+
+  const agingEligibility = canAssignWorker(
+    ['osha_10'],
+    [{ certType: 'osha_10', expiryDate: new Date('2026-09-01'), renewalPattern: 'INFORMAL_RECENCY' }],
+    now,
+  );
+  assertEqual('an aging (not expired) cert does not block assignment — the card is still legally held', agingEligibility.eligible, true);
+
+  const renewalPendingEligibility = canAssignWorker(
+    ['epa_rrp'],
+    [{ certType: 'epa_rrp', expiryDate: new Date('2026-09-01'), renewalPattern: 'GRACE_PERIOD', renewalFiledDate: new Date('2026-05-01') }],
+    now,
+  );
+  assertEqual('a renewal-pending cert does not block assignment — EPA RRP keeps it valid while pending', renewalPendingEligibility.eligible, true);
+
+  const trueExpiredEligibility = canAssignWorker(
+    ['epa_rrp'],
+    [{ certType: 'epa_rrp', expiryDate: new Date('2026-09-01'), renewalPattern: 'GRACE_PERIOD' }],
+    now,
+  );
+  assertEqual('a genuinely expired cert still blocks assignment regardless of pattern', trueExpiredEligibility.eligible, false);
+}
+
+console.log('\nsubcontractors.ts — entity-level COI and license compliance');
+{
+  const now = new Date('2026-09-20');
+
+  const allCurrent = evaluateSubcontractorCompliance(
+    {
+      licenseExpiryDate: new Date('2027-06-01'),
+      coiRecords: [
+        { coverageType: 'GENERAL_LIABILITY', expiryDate: new Date('2027-01-01') },
+        { coverageType: 'WORKERS_COMP', expiryDate: new Date('2027-01-01') },
+      ],
+    },
+    now,
+  );
+  assertEqual('a subcontractor with a current license and current COI has no compliance issue', allCurrent.hasExpiredItem, false);
+  assertEqual('and no expiring-soon flag either, this far out', allCurrent.hasExpiringSoonItem, false);
+
+  const expiredCoi = evaluateSubcontractorCompliance(
+    {
+      licenseExpiryDate: new Date('2027-06-01'),
+      coiRecords: [
+        { coverageType: 'GENERAL_LIABILITY', expiryDate: new Date('2026-08-01') },
+        { coverageType: 'WORKERS_COMP', expiryDate: new Date('2027-01-01') },
+      ],
+    },
+    now,
+  );
+  assertEqual('one lapsed coverage line is enough to flag the whole firm as expired', expiredCoi.hasExpiredItem, true);
+  assertEqual('the lapsed line is named by its coverage type', expiredCoi.credentials.find((c) => c.status === 'expired')?.label, 'GENERAL_LIABILITY');
+
+  const expiredLicense = evaluateSubcontractorCompliance(
+    { licenseExpiryDate: new Date('2026-01-01'), coiRecords: [] },
+    now,
+  );
+  assertEqual('an expired trade license alone flags the firm, with no COI records at all', expiredLicense.hasExpiredItem, true);
+
+  const noRecordsOnFile = evaluateSubcontractorCompliance({ licenseExpiryDate: null, coiRecords: [] }, now);
+  assertEqual('no license or COI on file is a data gap, not an asserted compliance failure', noRecordsOnFile.hasExpiredItem, false);
 }
 
 console.log('\nmaintenance.ts — nested PM hierarchy');

@@ -1,15 +1,13 @@
 /**
  * Wires the pure domain logic in lib/domain to live Prisma data. The bulk of
  * this file is computeJobReadiness, which turns "what's in the database
- * right now" into the four-part readiness breakdown shown on the dashboard
+ * right now" into the five-part readiness breakdown shown on the dashboard
  * and the job detail page.
  *
- * Kept deliberately simple for this first pass: it checks the crew and
- * equipment actually assigned to the job, not a full required-roles or
- * required-certs specification per job (that's a natural next step, noted
- * in the README roadmap, once there's a real need to model "this job needs
- * two carpenters and one licensed electrician" as data rather than inferring
- * it from who happens to be assigned).
+ * Crew and equipment readiness are checked against an explicit staffing
+ * plan and forward equipment bookings (JobRoleRequirement, EquipmentReservation),
+ * not just inferred from who happens to be assigned or parked on site —
+ * see the crew-and-equipment-requirements note in the README.
  *
  * resolveCounterValue and toDomainPlan below are smaller Prisma-row-to-
  * domain-shape adapters. They're kept here rather than duplicated at each
@@ -22,6 +20,7 @@ import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment }
 import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { getComplianceStatus } from '@/lib/domain/compliance';
+import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import type { MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
 import {
   computeReadiness,
@@ -92,7 +91,13 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   const job = await prisma.job.findUniqueOrThrow({
     where: { id: jobId },
     include: {
-      assignments: { include: { worker: { include: { certifications: true } } } },
+      assignments: {
+        include: {
+          worker: {
+            include: { certifications: true, subcontractor: { include: { coiRecords: true } } },
+          },
+        },
+      },
     },
   });
 
@@ -138,20 +143,47 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   const equipmentConflicts = findEquipmentConflicts(
     allReservationsForThoseAssets.map((r) => ({ id: r.id, equipmentId: r.equipmentId, jobId: r.jobId, start: r.start, end: r.end })),
   );
-  const hasAssetConflict = equipmentConflicts.some((c) => c.first.jobId === jobId || c.second.jobId === jobId);
+  const hasReservationOverlapConflict = equipmentConflicts.some((c) => c.first.jobId === jobId || c.second.jobId === jobId);
+
+  // A reservation on an asset that's currently down for service is a
+  // different problem than two reservations overlapping each other, but it
+  // belongs at the same severity: this job doesn't have the asset on site
+  // today, so it's a heads-up for whoever's tracking the booking, not a
+  // block on today's readiness the way an asset that IS on site and broken
+  // would be.
+  const reservedButDownForService = reservedEquipmentIds.length
+    ? await prisma.equipment.findMany({
+        where: { id: { in: reservedEquipmentIds }, status: 'DOWN_FOR_SERVICE' },
+        select: { id: true },
+      })
+    : [];
+  const hasAssetConflict = hasReservationOverlapConflict || reservedButDownForService.length > 0;
 
   const equipmentComponent = equipmentStatusFrom({ hasAssetDownForService, hasAssetConflict });
 
-  // --- Compliance: worker certifications and equipment compliance items ---
+  // --- Compliance: worker certifications, subcontractor entity-level
+  // compliance (COI + license), and equipment compliance items ---
   const now = new Date();
   let hasExpiredItem = false;
   let hasExpiringSoonItem = false;
 
   for (const assignment of job.assignments) {
     for (const cert of assignment.worker.certifications) {
-      const status = getCertificationStatus(cert.expiryDate, now);
+      const status = getCertificationStatus(cert.expiryDate, now, undefined, cert.renewalPattern, cert.renewalFiledDate);
       if (status.status === 'expired') hasExpiredItem = true;
-      if (status.status === 'expiring_soon') hasExpiringSoonItem = true;
+      if (status.status === 'expiring_soon' || status.status === 'aging' || status.status === 'renewal_pending') {
+        hasExpiringSoonItem = true;
+      }
+    }
+
+    const subcontractor = assignment.worker.subcontractor;
+    if (subcontractor) {
+      const subStatus = evaluateSubcontractorCompliance(
+        { licenseExpiryDate: subcontractor.licenseExpiryDate, coiRecords: subcontractor.coiRecords },
+        now,
+      );
+      if (subStatus.hasExpiredItem) hasExpiredItem = true;
+      if (subStatus.hasExpiringSoonItem) hasExpiringSoonItem = true;
     }
   }
 

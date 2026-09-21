@@ -6,16 +6,56 @@
  * module. Recert alerting follows the tiered-window convention used
  * throughout the industry (90/60/30 days, then overdue) rather than a single
  * flat reminder.
+ *
+ * A single expiryDate field can't honestly carry every real renewal shape a
+ * certification follows, so status is also a function of renewalPattern
+ * (full rationale on WorkerCertification.renewalPattern in schema.prisma):
+ *   - HARD_EXPIRY and LICENSE_CYCLE both use expiryDate as a real wall — the
+ *     same math as before this field existed, which is why both are also
+ *     the default when no pattern is given.
+ *   - INFORMAL_RECENCY treats expiryDate as an informal recommended-refresh
+ *     date rather than a hard wall — a card that's aged past it is a real
+ *     gap, but not the same kind of stop an actually-expired credential is,
+ *     so it reads as 'aging' rather than 'expired'.
+ *   - GRACE_PERIOD allows a renewal filed on time (at least
+ *     GRACE_FILING_WINDOW_DAYS before expiryDate) to keep the certification
+ *     valid past its nominal expiry while the renewal is pending — a
+ *     three-state condition (valid / expired / renewal_pending), not a
+ *     binary.
  */
 
-export type CertificationStatus = 'valid' | 'expiring_soon' | 'expired';
+export type CertificationStatus = 'valid' | 'expiring_soon' | 'expired' | 'aging' | 'renewal_pending';
 
+// renewalPattern is a plain string here, not a literal union — the same
+// choice compliance.ts makes for counterType/complianceType. It's a stored
+// SQLite column (see lib/enums.ts's RenewalPattern for the authoring-time
+// value/type pair the rest of the app uses), and this module only ever
+// compares it against a handful of known literals, so there's nothing a
+// stricter parameter type would buy beyond what lib/enums.ts already gives
+// callers. CertificationStatus, by contrast, is a literal union because
+// it's computed entirely by this module, never round-tripped from storage.
 export interface Certification {
   certType: string;
   expiryDate: Date;
+  renewalPattern?: string;
+  renewalFiledDate?: Date | null;
 }
 
 const DEFAULT_THRESHOLDS = [90, 60, 30];
+
+/** EPA RRP's own rule: recertification filed at least this many days before
+ * expiry keeps the existing certification valid while the renewal is
+ * decided. Used as the general GRACE_PERIOD rule here rather than a
+ * per-certification-type constant, since it's the only researched example
+ * of this pattern. */
+const GRACE_FILING_WINDOW_DAYS = 90;
+
+/** The industry's informal expectation for cards that never formally expire
+ * (OSHA 10/30) is "refreshed within the last three to five years" — three
+ * years is the earlier, more conservative edge of that range, so a worker
+ * reads as 'aging' as soon as it's plausible a reviewer would ask about it,
+ * not only once every observer would agree it's overdue. */
+export const INFORMAL_RECENCY_WINDOW_DAYS = 3 * 365;
 
 export interface CertificationStatusResult {
   status: CertificationStatus;
@@ -28,12 +68,29 @@ export function getCertificationStatus(
   expiryDate: Date,
   now: Date,
   thresholds: number[] = DEFAULT_THRESHOLDS,
+  renewalPattern: string = 'HARD_EXPIRY',
+  renewalFiledDate?: Date | null,
 ): CertificationStatusResult {
   const daysUntilExpiry = Math.floor(
     (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
   );
 
   if (daysUntilExpiry < 0) {
+    if (renewalPattern === 'INFORMAL_RECENCY') {
+      // Never a hard wall — no card was actually invalidated. This is a
+      // documentation gap worth flagging, not a "this worker can't legally
+      // do this work today" stop.
+      return { status: 'aging', daysUntilExpiry, crossedThreshold: 0 };
+    }
+
+    if (renewalPattern === 'GRACE_PERIOD') {
+      const filingDeadline = expiryDate.getTime() - GRACE_FILING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      const filedOnTime = renewalFiledDate != null && renewalFiledDate.getTime() <= filingDeadline;
+      if (filedOnTime) {
+        return { status: 'renewal_pending', daysUntilExpiry, crossedThreshold: 0 };
+      }
+    }
+
     return { status: 'expired', daysUntilExpiry, crossedThreshold: 0 };
   }
 
@@ -61,6 +118,12 @@ export interface AssignmentEligibility {
  * certification tracking: a scheduler should refuse — or hard-warn on — an
  * assignment that fails this check, rather than leaving certification status
  * as a separate tab nobody checks before the job starts.
+ *
+ * Only a true 'expired' status blocks an assignment. 'aging' (an
+ * INFORMAL_RECENCY card past its informal refresh window) and
+ * 'renewal_pending' (a GRACE_PERIOD renewal filed on time) both mean the
+ * worker still legally holds the credential — worth a PM's attention, not a
+ * hard stop.
  */
 export function canAssignWorker(
   requiredCertTypes: string[],
@@ -75,7 +138,13 @@ export function canAssignWorker(
       missingOrExpired.push(required);
       continue;
     }
-    const { status } = getCertificationStatus(held.expiryDate, now);
+    const { status } = getCertificationStatus(
+      held.expiryDate,
+      now,
+      undefined,
+      held.renewalPattern,
+      held.renewalFiledDate,
+    );
     if (status === 'expired') {
       missingOrExpired.push(required);
     }
