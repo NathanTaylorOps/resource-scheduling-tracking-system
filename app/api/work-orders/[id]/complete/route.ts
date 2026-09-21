@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { WorkOrderStatus, WorkOrderSource, EquipmentStatus } from '@/lib/enums';
-import { applyCompletionToHierarchy, type MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
-import { resolveCounterValue } from '@/lib/readiness-service';
+import { applyCompletionToHierarchy } from '@/lib/domain/maintenance';
+import { resolveCounterValue, toDomainPlan } from '@/lib/readiness-service';
 
 interface CompleteWorkOrderBody {
   completedAtValue?: number;
@@ -123,28 +123,4 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       { status: 400 },
     );
   }
-}
-
-function toDomainPlan(plan: {
-  id: string;
-  equipmentId: string;
-  parentPlanId: string | null;
-  counterType: string;
-  intervalValue: number;
-  toleranceValue: number;
-  hardLimit: boolean;
-  dueValue: number;
-}): DomainMaintenancePlan {
-  return {
-    id: plan.id,
-    equipmentId: plan.equipmentId,
-    parentPlanId: plan.parentPlanId,
-    schedule: {
-      unit: plan.counterType,
-      intervalValue: plan.intervalValue,
-      toleranceValue: plan.toleranceValue,
-      hardLimit: plan.hardLimit,
-      dueValue: plan.dueValue,
-    },
-  };
 }

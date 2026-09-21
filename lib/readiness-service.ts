@@ -1,8 +1,8 @@
 /**
- * Wires the pure readiness/compliance/certification logic in lib/domain to
- * live data for a specific job. This is the one place that turns "what's
- * in the database right now" into the four-part readiness breakdown shown
- * on the dashboard and the job detail page.
+ * Wires the pure domain logic in lib/domain to live Prisma data. The bulk of
+ * this file is computeJobReadiness, which turns "what's in the database
+ * right now" into the four-part readiness breakdown shown on the dashboard
+ * and the job detail page.
  *
  * Kept deliberately simple for this first pass: it checks the crew and
  * equipment actually assigned to the job, not a full required-roles or
@@ -10,12 +10,18 @@
  * in the README roadmap, once there's a real need to model "this job needs
  * two carpenters and one licensed electrician" as data rather than inferring
  * it from who happens to be assigned).
+ *
+ * resolveCounterValue and toDomainPlan below are smaller Prisma-row-to-
+ * domain-shape adapters. They're kept here rather than duplicated at each
+ * call site — the equipment detail page and work-order completion both need
+ * toDomainPlan, for instance, and previously each had its own copy.
  */
 
 import { prisma } from '@/lib/db';
 import { findOverlaps, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { getComplianceStatus } from '@/lib/domain/compliance';
+import type { MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
 import {
   computeReadiness,
   crewStatusFrom,
@@ -47,6 +53,37 @@ export function resolveCounterValue(
   }
   const counter = equipment.lifeCounters.find((lc) => lc.counterType === counterType);
   return counter ? counter.currentValue : null;
+}
+
+/**
+ * Converts a MaintenancePlan row (or the equivalent plain object) into the
+ * shape lib/domain/maintenance.ts operates on. A structural parameter type
+ * rather than Prisma's generated MaintenancePlan so this stays callable from
+ * anywhere a plan-shaped object is in hand, without importing @prisma/client
+ * just for the type.
+ */
+export function toDomainPlan(plan: {
+  id: string;
+  equipmentId: string;
+  parentPlanId: string | null;
+  counterType: string;
+  intervalValue: number;
+  toleranceValue: number;
+  hardLimit: boolean;
+  dueValue: number;
+}): DomainMaintenancePlan {
+  return {
+    id: plan.id,
+    equipmentId: plan.equipmentId,
+    parentPlanId: plan.parentPlanId,
+    schedule: {
+      unit: plan.counterType,
+      intervalValue: plan.intervalValue,
+      toleranceValue: plan.toleranceValue,
+      hardLimit: plan.hardLimit,
+      dueValue: plan.dueValue,
+    },
+  };
 }
 
 export async function computeJobReadiness(jobId: string): Promise<ReadinessResult> {

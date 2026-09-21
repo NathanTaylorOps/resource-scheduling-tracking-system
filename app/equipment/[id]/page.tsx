@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { resolveCounterValue } from '@/lib/readiness-service';
+import { resolveCounterValue, toDomainPlan } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue } from '@/lib/domain/forecasting';
-import { excludeCoveredChildren, type MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
+import { excludeCoveredChildren } from '@/lib/domain/maintenance';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WorkOrderCompleteButton } from '@/components/WorkOrderCompleteButton';
 import { generateEquipmentQrDataUrl } from '@/lib/qr';
@@ -201,24 +201,6 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       </div>
     </div>
   );
-}
-
-function toDomainPlan(p: {
-  id: string;
-  equipmentId: string;
-  parentPlanId: string | null;
-  counterType: string;
-  intervalValue: number;
-  toleranceValue: number;
-  hardLimit: boolean;
-  dueValue: number;
-}): DomainMaintenancePlan {
-  return {
-    id: p.id,
-    equipmentId: p.equipmentId,
-    parentPlanId: p.parentPlanId,
-    schedule: { unit: p.counterType, intervalValue: p.intervalValue, toleranceValue: p.toleranceValue, hardLimit: p.hardLimit, dueValue: p.dueValue },
-  };
 }
 
 function unitLabel(counterType: string): string {
