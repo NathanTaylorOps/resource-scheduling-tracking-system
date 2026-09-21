@@ -43,6 +43,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Describe the work performed.' }, { status: 400 });
   }
 
+  // submittedBy is optional — a log entered without attributing it to a
+  // specific crew member is still a valid log (see the "Unattributed" read
+  // side on the job detail page) — but a value that IS given has to name a
+  // real worker, the same up-front check every other worker reference in
+  // this app gets, rather than surfacing as a raw foreign-key failure.
+  let submittedBy: string | null = null;
+  if (body.submittedBy) {
+    const submitter = await prisma.worker.findUnique({ where: { id: body.submittedBy } });
+    if (!submitter) {
+      return NextResponse.json({ error: 'No worker matches the selected submitter.' }, { status: 400 });
+    }
+    submittedBy = submitter.id;
+  }
+
   const existing = await prisma.dailyLog.findUnique({ where: { jobId_logDate: { jobId: job.id, logDate } } });
   if (existing) {
     return NextResponse.json({ error: 'A daily log already exists for this job on that date.' }, { status: 409 });
@@ -56,7 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       crewCount: body.crewCount,
       workPerformed,
       delaysNotes: body.delaysNotes?.trim() || null,
-      submittedBy: body.submittedBy || null,
+      submittedBy,
     },
   });
 

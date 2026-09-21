@@ -41,6 +41,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'Describe the work performed.' }, { status: 400 });
   }
 
+  // Same up-front existence check the POST route makes on this field — see
+  // its own comment — so an edit can't introduce a bad worker reference the
+  // original submission was never allowed to.
+  let submittedBy: string | null = null;
+  if (body.submittedBy) {
+    const submitter = await prisma.worker.findUnique({ where: { id: body.submittedBy } });
+    if (!submitter) {
+      return NextResponse.json({ error: 'No worker matches the selected submitter.' }, { status: 400 });
+    }
+    submittedBy = submitter.id;
+  }
+
   await prisma.dailyLog.update({
     where: { id: log.id },
     data: {
@@ -48,7 +60,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       crewCount: body.crewCount,
       workPerformed,
       delaysNotes: body.delaysNotes?.trim() || null,
-      submittedBy: body.submittedBy || null,
+      submittedBy,
     },
   });
 
