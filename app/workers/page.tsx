@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
+import type { ComponentStatus } from '@/lib/domain/readiness';
 import { StatusBadge } from '@/components/StatusBadge';
 import { CreateWorkerForm } from '@/components/CreateWorkerForm';
 
@@ -22,7 +23,10 @@ export default async function WorkersPage() {
     const statuses = worker.certifications.map(
       (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status,
     );
-    const worst = statuses.includes('expired')
+    // See the matching comment in app/subcontractors/page.tsx -- an
+    // unannotated ternary of string literals widens to `string`, not the
+    // literal union StatusBadge expects.
+    const worst: ComponentStatus = statuses.includes('expired')
       ? 'blocked'
       : statuses.includes('expiring_soon') || statuses.includes('aging') || statuses.includes('renewal_pending')
         ? 'warning'

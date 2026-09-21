@@ -34,6 +34,7 @@ import {
 } from '@/lib/domain/readiness';
 import { checkWeatherSensitivity, type NwsForecastResult } from '@/lib/weather/nws';
 import { isPastCalendarDate } from '@/lib/domain/dates';
+import type { WeatherSensitivity } from '@/lib/enums';
 
 // Exported so any screen that needs to reproduce a piece of this file's
 // readiness math against a subset of the same data (e.g. the mobile field
@@ -329,7 +330,13 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
     weather = 'unknown';
   } else {
     const forecast = JSON.parse(forecastCache!.dataJson) as NwsForecastResult;
-    const check = checkWeatherSensitivity(forecast, job.weatherSensitivity);
+    // job.weatherSensitivity is a plain Prisma String column (see the
+    // schema-level note on this field), not a native enum, so its static
+    // type is just `string`. The value is validated against
+    // WeatherSensitivity's members on every write (app/api/jobs/route.ts),
+    // so this cast reflects a real runtime guarantee rather than papering
+    // over one -- the same pattern used at the write side of this field.
+    const check = checkWeatherSensitivity(forecast, job.weatherSensitivity as WeatherSensitivity);
     weather = weatherStatusFrom({
       hasSevereRiskInForecastWindow: check.atRisk && job.weatherSensitivity === 'SENSITIVE',
       hasModerateRiskInForecastWindow: check.atRisk && job.weatherSensitivity === 'CONDITIONAL',

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
+import type { ComponentStatus } from '@/lib/domain/readiness';
 import { StatusBadge } from '@/components/StatusBadge';
 import { CreateSubcontractorForm } from '@/components/CreateSubcontractorForm';
 
@@ -19,7 +20,12 @@ export default async function SubcontractorsPage() {
       { licenseExpiryDate: sub.licenseExpiryDate, coiRecords: sub.coiRecords },
       now,
     );
-    const worst = compliance.hasExpiredItem ? 'blocked' : compliance.hasExpiringSoonItem ? 'warning' : 'ok';
+    // Explicitly typed as ComponentStatus: without an annotation, a plain
+    // ternary of string literals like this widens to `string`, which
+    // compiles fine here but fails at the StatusBadge call below (caught by
+    // the typecheck CI step added in this pass -- the plain build/lint
+    // steps that ran before it never exercised this path).
+    const worst: ComponentStatus = compliance.hasExpiredItem ? 'blocked' : compliance.hasExpiringSoonItem ? 'warning' : 'ok';
     return { sub, worst };
   });
 

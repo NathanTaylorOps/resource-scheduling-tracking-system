@@ -23,7 +23,14 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
   const now = new Date();
   const periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const utilization = calculateUtilization({
-    assignments: worker.assignments.map((a) => ({ id: a.id, workerId: a.workerId, jobId: a.jobId, start: a.start, end: a.end })),
+    assignments: worker.assignments.map((a) => ({
+      id: a.id,
+      workerId: a.workerId,
+      jobId: a.jobId,
+      roleOnJob: a.roleOnJob,
+      start: a.start,
+      end: a.end,
+    })),
     periodStart,
     periodEnd: now,
   });
