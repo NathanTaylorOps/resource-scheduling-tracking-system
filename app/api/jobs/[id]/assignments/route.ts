@@ -65,6 +65,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'No worker matches that selection.' }, { status: 400 });
   }
 
+  // findFirst is safe here because @@unique([jobId, roleOrTrade]) on
+  // JobRoleRequirement (schema.prisma) guarantees at most one row can match —
+  // this can never silently pick between two requirements for the same role.
   const requirement = await prisma.jobRoleRequirement.findFirst({
     where: { jobId: job.id, roleOrTrade: roleOnJob },
   });

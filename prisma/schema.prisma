@@ -214,6 +214,15 @@ model JobRoleRequirement {
 
   job               Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
+  // One requirement row per role per job. Without this, the requirements
+  // route had nothing stopping two rows from the same job naming the same
+  // roleOrTrade, and the assignments route reads a role's required certs via
+  // findFirst — a second, later row (with different or absent
+  // requiredCertTypes) would silently shadow the first, undermining the
+  // exact hard-stop this table exists to drive. See the requirements
+  // route's own check, which rejects a duplicate before this constraint
+  // would ever need to.
+  @@unique([jobId, roleOrTrade])
   @@index([jobId])
 }
 
