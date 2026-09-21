@@ -7,7 +7,10 @@ import { Plus } from 'lucide-react';
 interface AssignWorkerFormProps {
   jobId: string;
   workers: Array<{ id: string; name: string; trade: string }>;
+  roleRequirements: Array<{ roleOrTrade: string }>;
 }
+
+const CUSTOM_ROLE_OPTION = '__custom__';
 
 /** Assigns an existing worker to this job. A scheduling conflict isn't
  * checked before submit — same as an equipment reservation, it's allowed
@@ -15,16 +18,33 @@ interface AssignWorkerFormProps {
  * assignment exists, rather than blocked here (see the API route's
  * comment). A certification gate, if this role's staffing-plan requirement
  * names required certs, IS enforced by the API and shows up as the error
- * below on submit. */
-export function AssignWorkerForm({ jobId, workers }: AssignWorkerFormProps) {
+ * below on submit — but only if roleOnJob matches that requirement's
+ * roleOrTrade exactly, which is why the role picker below is a dropdown of
+ * the job's own known roles rather than a free-text field: a typo or a
+ * wording mismatch ("Electrician" vs. "Licensed Electrician") used to make
+ * the gate silently no-op with no error shown at all. "Other" is still
+ * offered, for a role that's genuinely not in the staffing plan yet — that
+ * path is explicit about not being checked against anything. */
+export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWorkerFormProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [workerId, setWorkerId] = useState('');
   const [roleOnJob, setRoleOnJob] = useState('');
+  const [useCustomRole, setUseCustomRole] = useState(false);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleRoleSelect(value: string) {
+    if (value === CUSTOM_ROLE_OPTION) {
+      setUseCustomRole(true);
+      setRoleOnJob('');
+    } else {
+      setUseCustomRole(false);
+      setRoleOnJob(value);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -54,6 +74,7 @@ export function AssignWorkerForm({ jobId, workers }: AssignWorkerFormProps) {
       }
       setWorkerId('');
       setRoleOnJob('');
+      setUseCustomRole(false);
       setStart('');
       setEnd('');
       setOpen(false);
@@ -91,12 +112,26 @@ export function AssignWorkerForm({ jobId, workers }: AssignWorkerFormProps) {
         </label>
         <label className="flex min-w-[140px] flex-1 flex-col text-xs font-medium text-zinc-600">
           Role on this job
-          <input
-            value={roleOnJob}
-            onChange={(e) => setRoleOnJob(e.target.value)}
-            placeholder="Match a staffing-plan role to gate on its required certs"
+          <select
+            value={useCustomRole ? CUSTOM_ROLE_OPTION : roleOnJob}
+            onChange={(e) => handleRoleSelect(e.target.value)}
             className="mt-1 rounded-md border border-outdoor-border px-2.5 py-1.5 text-sm"
-          />
+          >
+            <option value="">Select a role…</option>
+            {roleRequirements.map((r) => (
+              <option key={r.roleOrTrade} value={r.roleOrTrade}>{r.roleOrTrade}</option>
+            ))}
+            <option value={CUSTOM_ROLE_OPTION}>Other / not in the staffing plan…</option>
+          </select>
+          {useCustomRole && (
+            <input
+              value={roleOnJob}
+              onChange={(e) => setRoleOnJob(e.target.value)}
+              placeholder="Type the role — won't be checked against any staffing-plan requirement"
+              className="mt-1 rounded-md border border-outdoor-border px-2.5 py-1.5 text-sm"
+              autoFocus
+            />
+          )}
         </label>
       </div>
       <div className="flex flex-wrap gap-2">

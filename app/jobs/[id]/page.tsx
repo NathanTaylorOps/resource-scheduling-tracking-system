@@ -280,7 +280,11 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             })}
             {job.assignments.length === 0 && <p className="py-2 text-sm text-zinc-500">No crew assigned yet.</p>}
           </ul>
-          <AssignWorkerForm jobId={job.id} workers={allWorkers} />
+          <AssignWorkerForm
+            jobId={job.id}
+            workers={allWorkers}
+            roleRequirements={roleRequirements.map((r) => ({ roleOrTrade: r.roleOrTrade }))}
+          />
         </div>
 
         {/* Equipment */}
