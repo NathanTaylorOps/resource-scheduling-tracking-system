@@ -35,6 +35,7 @@ export default async function SchedulePage() {
       id: a.id,
       workerId: a.workerId,
       jobId: a.jobId,
+      roleOnJob: a.roleOnJob,
       start: a.start,
       end: a.end,
     })),

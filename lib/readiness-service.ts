@@ -110,6 +110,7 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
     id: a.id,
     workerId: a.workerId,
     jobId: a.jobId,
+    roleOnJob: a.roleOnJob,
     start: a.start,
     end: a.end,
   }));

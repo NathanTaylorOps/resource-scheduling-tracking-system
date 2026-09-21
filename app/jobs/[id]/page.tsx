@@ -39,7 +39,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const allAssignments = workerIds.length
     ? await prisma.assignment.findMany({ where: { workerId: { in: workerIds } } })
     : [];
-  const overlapInput: OverlapAssignment[] = allAssignments.map((a) => ({ id: a.id, workerId: a.workerId, jobId: a.jobId, start: a.start, end: a.end }));
+  const overlapInput: OverlapAssignment[] = allAssignments.map((a) => ({ id: a.id, workerId: a.workerId, jobId: a.jobId, roleOnJob: a.roleOnJob, start: a.start, end: a.end }));
   const conflicts = findOverlaps(overlapInput).filter((c) => c.first.jobId === job.id || c.second.jobId === job.id);
 
   // findOverlaps only pairs a worker against their own other assignments, so
