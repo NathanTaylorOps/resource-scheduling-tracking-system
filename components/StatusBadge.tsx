@@ -1,3 +1,4 @@
+import { CircleCheck, TriangleAlert, CircleX } from 'lucide-react';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import type { CertificationStatusResult } from '@/lib/domain/certifications';
 
@@ -13,21 +14,28 @@ const CLASSES: Record<ComponentStatus, string> = {
   blocked: 'bg-red-50 text-red-800 border-red-200',
 };
 
+// A shape per status, not just a color per status — so the difference
+// between "ready" and "blocked" still reads for a colorblind viewer, or on
+// a washed-out screen in direct sun where the outdoor-mode palette above
+// is already doing what it can.
+const ICONS: Record<ComponentStatus, typeof CircleCheck> = {
+  ok: CircleCheck,
+  warning: TriangleAlert,
+  blocked: CircleX,
+};
+
 /**
- * The single status-color vocabulary used everywhere a readiness,
- * compliance, or maintenance state is shown — never a bespoke color chosen
- * per screen.
+ * The single status vocabulary used everywhere a readiness, compliance, or
+ * maintenance state is shown — never a bespoke color or icon chosen per
+ * screen.
  */
 export function StatusBadge({ status, label }: { status: ComponentStatus; label?: string }) {
+  const Icon = ICONS[status];
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${CLASSES[status]}`}
     >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${
-          status === 'ok' ? 'bg-status-ok' : status === 'warning' ? 'bg-status-warning' : 'bg-status-blocked'
-        }`}
-      />
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {label ?? LABELS[status]}
     </span>
   );

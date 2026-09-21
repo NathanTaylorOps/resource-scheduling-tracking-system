@@ -4,6 +4,7 @@ import { computeJobReadiness } from '@/lib/readiness-service';
 import { StatusBadge } from '@/components/StatusBadge';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import { getCertificationStatus } from '@/lib/domain/certifications';
+import { CircleCheck, TriangleAlert, CircleX } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,10 +68,11 @@ export default async function DashboardPage() {
 }
 
 function ComponentPill({ label, status }: { label: string; status: ComponentStatus }) {
-  const dotClass = status === 'ok' ? 'bg-status-ok' : status === 'warning' ? 'bg-status-warning' : 'bg-status-blocked';
+  const Icon = status === 'ok' ? CircleCheck : status === 'warning' ? TriangleAlert : CircleX;
+  const iconClass = status === 'ok' ? 'text-status-ok' : status === 'warning' ? 'text-status-warning' : 'text-status-blocked';
   return (
     <div className="flex items-center gap-1.5 rounded-md border border-outdoor-border px-2 py-1 text-xs text-zinc-600">
-      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      <Icon className={`h-3 w-3 ${iconClass}`} aria-hidden="true" />
       {label}
     </div>
   );
