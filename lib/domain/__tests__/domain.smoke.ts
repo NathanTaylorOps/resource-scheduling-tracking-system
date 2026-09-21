@@ -11,10 +11,11 @@
 import { getComplianceStatus, recordCompletion, earliestDue } from '../compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate, bucketForecast } from '../forecasting';
 import { findOverlaps, calculateUtilization, findUnfilledRoles } from '../scheduling';
-import { getCertificationStatus, canAssignWorker, parseCertTypesList } from '../certifications';
+import { getCertificationStatus, canAssignWorker, parseCertTypesList, summarizeCertificationStatuses } from '../certifications';
+import { calendarDaysUntil, isPastCalendarDate } from '../dates';
 import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePlan } from '../maintenance';
 import { computeReadiness, permitsStatusFrom } from '../readiness';
-import { custodyUpdateFor } from '../custody';
+import { custodyUpdateFor, CustodyActionRejected } from '../custody';
 import { findEquipmentConflicts } from '../equipment';
 import { evaluateSubcontractorCompliance } from '../subcontractors';
 
@@ -31,6 +32,26 @@ function assertEqual(label: string, actual: unknown, expected: unknown) {
     console.log(`  FAIL  ${label}`);
     console.log(`        expected: ${JSON.stringify(expected)}`);
     console.log(`        actual:   ${JSON.stringify(actual)}`);
+  }
+}
+
+function assertThrows(label: string, fn: () => void, errorClass: new (...args: never[]) => Error) {
+  try {
+    fn();
+    failed++;
+    console.log(`  FAIL  ${label}`);
+    console.log(`        expected: throws ${errorClass.name}`);
+    console.log(`        actual:   did not throw`);
+  } catch (err) {
+    if (err instanceof errorClass) {
+      passed++;
+      console.log(`  PASS  ${label}`);
+    } else {
+      failed++;
+      console.log(`  FAIL  ${label}`);
+      console.log(`        expected: throws ${errorClass.name}`);
+      console.log(`        actual:   threw ${err instanceof Error ? err.constructor.name : typeof err}`);
+    }
   }
 }
 
@@ -395,6 +416,20 @@ console.log('\nreadiness.ts — composite decomposable score');
   const permitBlocked = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'ok', weather: 'ok', permits: 'blocked' });
   assertEqual('a blocked permits component blocks the job exactly like any other component', permitBlocked.overall, 'blocked');
 
+  // 'unknown' (a component that hasn't actually been evaluated — see
+  // lib/readiness-service.ts's weather handling) must read as needing
+  // attention, not silently pass as 'ok'. This is the regression test for
+  // the previous round's weather-defaults-to-ok bug: whatever produces the
+  // inputs, computeReadiness itself must never let 'unknown' lose to 'ok'.
+  const unknownWeather = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'ok', weather: 'unknown', permits: 'ok' });
+  assertEqual("an 'unknown' component is never silently treated as ok", unknownWeather.overall, 'unknown');
+
+  const unknownAlongsideWarning = computeReadiness({ crew: 'warning', equipment: 'ok', compliance: 'ok', weather: 'unknown', permits: 'ok' });
+  assertEqual("'unknown' and 'warning' are equally serious — neither silently outranks the other", unknownAlongsideWarning.overall, 'warning');
+
+  const unknownDoesNotOutrankBlocked = computeReadiness({ crew: 'blocked', equipment: 'ok', compliance: 'ok', weather: 'unknown', permits: 'ok' });
+  assertEqual("an actual 'blocked' component still wins over 'unknown'", unknownDoesNotOutrankBlocked.overall, 'blocked');
+
   assertEqual(
     'a failed inspection blocks regardless of permit or other-inspection standing',
     permitsStatusFrom({ hasFailedInspection: true, hasExpiredPermit: false, hasInspectionDueSoon: false }),
@@ -419,7 +454,12 @@ console.log('\nreadiness.ts — composite decomposable score');
 
 console.log('\ncustody.ts — what a scan action does to custody and status');
 {
-  const checkOut = custodyUpdateFor({ action: 'CHECK_OUT', scannedByWorkerId: 'w-marcus', jobId: 'job-cedar-hollow' });
+  const checkOut = custodyUpdateFor({
+    action: 'CHECK_OUT',
+    scannedByWorkerId: 'w-marcus',
+    jobId: 'job-cedar-hollow',
+    currentStatus: 'IDLE',
+  });
   assertEqual('check-out assigns the job and the scanning worker, and clears any yard note', checkOut, {
     currentJobId: 'job-cedar-hollow',
     currentWorkerId: 'w-marcus',
@@ -427,7 +467,36 @@ console.log('\ncustody.ts — what a scan action does to custody and status');
     status: 'ACTIVE',
   });
 
-  const checkIn = custodyUpdateFor({ action: 'CHECK_IN', scannedByWorkerId: 'w-marcus', locationNote: '  Yard — Bay 2  ' });
+  assertThrows(
+    'check-out of an asset down for service is rejected, not silently reactivated',
+    () =>
+      custodyUpdateFor({
+        action: 'CHECK_OUT',
+        scannedByWorkerId: 'w-marcus',
+        jobId: 'job-cedar-hollow',
+        currentStatus: 'DOWN_FOR_SERVICE',
+      }),
+    CustodyActionRejected,
+  );
+
+  assertThrows(
+    'check-out of a retired asset is rejected',
+    () =>
+      custodyUpdateFor({
+        action: 'CHECK_OUT',
+        scannedByWorkerId: 'w-marcus',
+        jobId: 'job-cedar-hollow',
+        currentStatus: 'RETIRED',
+      }),
+    CustodyActionRejected,
+  );
+
+  const checkIn = custodyUpdateFor({
+    action: 'CHECK_IN',
+    scannedByWorkerId: 'w-marcus',
+    locationNote: '  Yard — Bay 2  ',
+    currentStatus: 'ACTIVE',
+  });
   assertEqual('check-in releases custody and files the trimmed location note', checkIn, {
     currentJobId: null,
     currentWorkerId: null,
@@ -435,17 +504,69 @@ console.log('\ncustody.ts — what a scan action does to custody and status');
     status: 'IDLE',
   });
 
-  const checkInNoNote = custodyUpdateFor({ action: 'CHECK_IN', scannedByWorkerId: 'w-marcus' });
+  const checkInNoNote = custodyUpdateFor({ action: 'CHECK_IN', scannedByWorkerId: 'w-marcus', currentStatus: 'ACTIVE' });
   assertEqual('check-in with no note on hand still files a location — the yard', checkInNoNote.locationNote, 'Yard');
 
-  const locationUpdate = custodyUpdateFor({ action: 'LOCATION_UPDATE', scannedByWorkerId: 'w-jules', locationNote: '  Bay 3  ' });
+  const locationUpdate = custodyUpdateFor({
+    action: 'LOCATION_UPDATE',
+    scannedByWorkerId: 'w-jules',
+    locationNote: '  Bay 3  ',
+    currentStatus: 'ACTIVE',
+  });
   assertEqual('a location update touches only the location note', locationUpdate, { locationNote: 'Bay 3' });
 
-  const locationUpdateNoNote = custodyUpdateFor({ action: 'LOCATION_UPDATE', scannedByWorkerId: 'w-jules' });
+  const locationUpdateNoNote = custodyUpdateFor({
+    action: 'LOCATION_UPDATE',
+    scannedByWorkerId: 'w-jules',
+    currentStatus: 'ACTIVE',
+  });
   assertEqual('a location update with no note on hand degrades gracefully rather than throwing', locationUpdateNoNote.locationNote, undefined);
 
-  const defect = custodyUpdateFor({ action: 'DEFECT_REPORTED', scannedByWorkerId: 'w-bigsam' });
+  const defect = custodyUpdateFor({ action: 'DEFECT_REPORTED', scannedByWorkerId: 'w-bigsam', currentStatus: 'ACTIVE' });
   assertEqual('a defect report takes the asset down without moving it', defect, { status: 'DOWN_FOR_SERVICE' });
+
+  // Reporting a second defect on an asset that's already down for service
+  // must not throw the way CHECK_OUT does — the asset never has to move to
+  // get flagged, so there's no unsafe state a repeat defect report could
+  // create. This guards against a fix for CHECK_OUT being copy-pasted onto
+  // DEFECT_REPORTED and blocking a legitimate follow-up report.
+  const secondDefect = custodyUpdateFor({
+    action: 'DEFECT_REPORTED',
+    scannedByWorkerId: 'w-bigsam',
+    currentStatus: 'DOWN_FOR_SERVICE',
+  });
+  assertEqual('a second defect report on an already-down asset still succeeds', secondDefect, { status: 'DOWN_FOR_SERVICE' });
+}
+
+console.log('\ndates.ts — calendar-date comparison, not exact milliseconds');
+{
+  // The regression case: a date-only field parses to UTC midnight, so
+  // comparing it against a `now` that carries a time-of-day component used
+  // to make a credential or permit good "through" its date read as expired
+  // hours before that date was actually over anywhere reasonable. now here
+  // is deliberately late in the UTC day of 2026-09-01 (11pm UTC — 4pm US
+  // Pacific, still clearly "September 1st" to a person reading the date).
+  const expiryDate = new Date('2026-09-01');
+  const lateSameUtcDay = new Date('2026-09-01T23:00:00Z');
+  assertEqual('a date-only field is still 0 days out late in its own UTC day, not negative', calendarDaysUntil(expiryDate, lateSameUtcDay), 0);
+  assertEqual('and is therefore not past its calendar date yet', isPastCalendarDate(expiryDate, lateSameUtcDay), false);
+
+  const nextUtcDay = new Date('2026-09-02T00:00:01Z');
+  assertEqual('once the UTC calendar date has actually turned over, it reads as -1 days out', calendarDaysUntil(expiryDate, nextUtcDay), -1);
+  assertEqual('and only then as past its calendar date', isPastCalendarDate(expiryDate, nextUtcDay), true);
+
+  assertEqual('a target 15 calendar days out from a UTC-midnight now is exactly 15', calendarDaysUntil(new Date('2026-10-05'), new Date('2026-09-20')), 15);
+}
+
+console.log('\ncertifications.ts — summarizeCertificationStatuses shared bucketing');
+{
+  assertEqual(
+    'expired is counted separately from every "needs review" status',
+    summarizeCertificationStatuses(['expired', 'expiring_soon', 'aging', 'renewal_pending', 'valid']),
+    { expiredCount: 1, reviewCount: 3 },
+  );
+  assertEqual('all valid nets to zero of both', summarizeCertificationStatuses(['valid', 'valid']), { expiredCount: 0, reviewCount: 0 });
+  assertEqual('an empty list nets to zero of both', summarizeCertificationStatuses([]), { expiredCount: 0, reviewCount: 0 });
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
