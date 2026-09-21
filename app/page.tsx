@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
-import { StatusBadge } from '@/components/StatusBadge';
+import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import { getCertificationStatus } from '@/lib/domain/certifications';
-import { CircleCheck, TriangleAlert, CircleX } from 'lucide-react';
+import { CircleCheck, TriangleAlert, CircleX, CircleHelp } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +56,7 @@ export default async function DashboardPage() {
                 <ComponentPill label="Weather" status={readiness.weather} />
                 <ComponentPill label="Permits" status={readiness.permits} />
                 <div className="sm:ml-3">
-                  <StatusBadge status={readiness.overall} label={readiness.overall === 'ok' ? 'Ready' : readiness.overall === 'warning' ? 'Attention' : 'Blocked'} />
+                  <StatusBadge status={readiness.overall} label={OVERALL_READINESS_LABEL[readiness.overall]} />
                 </div>
               </div>
             </Link>
@@ -67,12 +67,29 @@ export default async function DashboardPage() {
   );
 }
 
+// Explicit per-status maps rather than a ternary chain — a ternary chain
+// that only branches on 'ok' and 'warning' silently sends every other
+// status (including a status added later, like 'unknown') down the same
+// "must be blocked" fallback, which is exactly the kind of false-red (or,
+// before 'unknown' existed here, false-green) misread this file's whole
+// readiness design is built to avoid.
+const PILL_ICON: Record<ComponentStatus, typeof CircleCheck> = {
+  ok: CircleCheck,
+  warning: TriangleAlert,
+  blocked: CircleX,
+  unknown: CircleHelp,
+};
+const PILL_ICON_CLASS: Record<ComponentStatus, string> = {
+  ok: 'text-status-ok',
+  warning: 'text-status-warning',
+  blocked: 'text-status-blocked',
+  unknown: 'text-zinc-400',
+};
 function ComponentPill({ label, status }: { label: string; status: ComponentStatus }) {
-  const Icon = status === 'ok' ? CircleCheck : status === 'warning' ? TriangleAlert : CircleX;
-  const iconClass = status === 'ok' ? 'text-status-ok' : status === 'warning' ? 'text-status-warning' : 'text-status-blocked';
+  const Icon = PILL_ICON[status];
   return (
     <div className="flex items-center gap-1.5 rounded-md border border-outdoor-border px-2 py-1 text-xs text-zinc-600">
-      <Icon className={`h-3 w-3 ${iconClass}`} aria-hidden="true" />
+      <Icon className={`h-3 w-3 ${PILL_ICON_CLASS[status]}`} aria-hidden="true" />
       {label}
     </div>
   );

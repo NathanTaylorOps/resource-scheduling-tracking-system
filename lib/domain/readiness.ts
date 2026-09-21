@@ -8,7 +8,17 @@
  * isn't ready, not just that it isn't.
  */
 
-export type ComponentStatus = 'ok' | 'warning' | 'blocked';
+/**
+ * 'unknown' is distinct from 'ok': it means this component hasn't actually
+ * been evaluated against current data (the clearest case is weather — a job
+ * nobody's opened yet has no forecast cached, since the forecast refreshes
+ * on view rather than on a schedule; see lib/readiness-service.ts). Reading
+ * that as 'ok' would be a false-green — exactly the kind of number this
+ * tool is built not to show. It's ranked as seriously as 'warning' in the
+ * rollup below: "we don't know" deserves the same glance-worthy attention
+ * as "we know it's borderline," never the silence of "ok."
+ */
+export type ComponentStatus = 'ok' | 'warning' | 'blocked' | 'unknown';
 
 export interface ReadinessInputs {
   crew: ComponentStatus;
@@ -22,11 +32,23 @@ export interface ReadinessResult extends ReadinessInputs {
   overall: ComponentStatus;
 }
 
-const SEVERITY: Record<ComponentStatus, number> = { ok: 0, warning: 1, blocked: 2 };
+const SEVERITY: Record<ComponentStatus, number> = { ok: 0, unknown: 1, warning: 1, blocked: 2 };
 
 export function computeReadiness(inputs: ReadinessInputs): ReadinessResult {
   const overall = ([inputs.crew, inputs.equipment, inputs.compliance, inputs.weather, inputs.permits] as const)
-    .reduce<ComponentStatus>((worst, current) => (SEVERITY[current] > SEVERITY[worst] ? current : worst), 'ok');
+    .reduce<ComponentStatus>((worst, current) => {
+      // An out-of-domain value can't reach here through TypeScript, but a
+      // value that somehow isn't in SEVERITY (a bad cast, a future status
+      // added to one union and not the other) must never win by silently
+      // resolving to undefined and losing every comparison — that would
+      // let a genuinely bad status hide behind whatever was already
+      // worst. Fail loud instead of failing green.
+      const currentSeverity = SEVERITY[current];
+      if (currentSeverity === undefined) {
+        throw new Error(`computeReadiness: unrecognized component status "${current}"`);
+      }
+      return currentSeverity > SEVERITY[worst] ? current : worst;
+    }, 'ok');
 
   return { ...inputs, overall };
 }

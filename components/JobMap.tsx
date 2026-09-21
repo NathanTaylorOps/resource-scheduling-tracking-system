@@ -22,6 +22,7 @@ const STATUS_MARKER_CLASS: Record<ComponentStatus, string> = {
   ok: 'bg-status-ok',
   warning: 'bg-status-warning',
   blocked: 'bg-status-blocked',
+  unknown: 'bg-status-unknown',
 };
 
 function markerIcon(status: ComponentStatus) {

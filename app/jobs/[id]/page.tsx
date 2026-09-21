@@ -4,9 +4,10 @@ import { prisma } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
 import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
 import { findEquipmentConflicts } from '@/lib/domain/equipment';
-import { getCertificationStatus } from '@/lib/domain/certifications';
+import { getCertificationStatus, summarizeCertificationStatuses } from '@/lib/domain/certifications';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge } from '@/components/StatusBadge';
+import type { ComponentStatus } from '@/lib/domain/readiness';
 import { WeatherPanel } from '@/components/WeatherPanel';
 import { JobRequirementsEditor } from '@/components/JobRequirementsEditor';
 import { AssignWorkerForm } from '@/components/AssignWorkerForm';
@@ -250,11 +251,10 @@ export default async function JobDetailPage({ params }: { params: { id: string }
               // credential behind the same soft wording a merely-aging OSHA
               // card gets, unlike the subcontractor-compliance treatment
               // just below, which has always kept expired and to-review
-              // separate.
-              const expiredCerts = certStatuses.filter((s) => s === 'expired').length;
-              const toReviewCerts = certStatuses.filter(
-                (s) => s === 'expiring_soon' || s === 'aging' || s === 'renewal_pending',
-              ).length;
+              // separate. summarizeCertificationStatuses is the shared rule
+              // for that split — see lib/domain/certifications.ts — so this
+              // page and the mobile field view can't quietly disagree on it.
+              const { expiredCount: expiredCerts, reviewCount: toReviewCerts } = summarizeCertificationStatuses(certStatuses);
               const subCompliance = a.worker.subcontractor
                 ? evaluateSubcontractorCompliance(
                     { licenseExpiryDate: a.worker.subcontractor.licenseExpiryDate, coiRecords: a.worker.subcontractor.coiRecords },
@@ -434,7 +434,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   );
 }
 
-function ReadinessRow({ label, status }: { label: string; status: 'ok' | 'warning' | 'blocked' }) {
+function ReadinessRow({ label, status }: { label: string; status: ComponentStatus }) {
   return (
     <div>
       <div className="text-xs text-zinc-500">{label}</div>

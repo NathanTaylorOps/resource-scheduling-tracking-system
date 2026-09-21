@@ -1,4 +1,4 @@
-import { CircleCheck, TriangleAlert, CircleX } from 'lucide-react';
+import { CircleCheck, TriangleAlert, CircleX, CircleHelp } from 'lucide-react';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import type { CertificationStatusResult } from '@/lib/domain/certifications';
 
@@ -6,12 +6,32 @@ const LABELS: Record<ComponentStatus, string> = {
   ok: 'OK',
   warning: 'Warning',
   blocked: 'Blocked',
+  unknown: 'Not yet checked',
+};
+
+/**
+ * The label a page shows for an *overall* readiness verdict specifically —
+ * distinct wording from the per-component LABELS above ("Ready" reads
+ * better than "OK" for a whole job). Exported so every screen that shows
+ * an overall badge (dashboard, field picker, map) pulls from one map
+ * instead of each hand-rolling its own ok/warning/else ternary — a ternary
+ * with only two named branches silently sends every other status, present
+ * or future, down the same fallback branch, which is exactly how the
+ * previous round's weather default-to-"ok" bug happened in the first
+ * place.
+ */
+export const OVERALL_READINESS_LABEL: Record<ComponentStatus, string> = {
+  ok: 'Ready',
+  warning: 'Attention',
+  blocked: 'Blocked',
+  unknown: 'Needs review',
 };
 
 const CLASSES: Record<ComponentStatus, string> = {
   ok: 'bg-green-50 text-green-800 border-green-200',
   warning: 'bg-amber-50 text-amber-800 border-amber-200',
   blocked: 'bg-red-50 text-red-800 border-red-200',
+  unknown: 'bg-zinc-100 text-zinc-600 border-zinc-300',
 };
 
 // A shape per status, not just a color per status — so the difference
@@ -22,6 +42,7 @@ const ICONS: Record<ComponentStatus, typeof CircleCheck> = {
   ok: CircleCheck,
   warning: TriangleAlert,
   blocked: CircleX,
+  unknown: CircleHelp,
 };
 
 /**

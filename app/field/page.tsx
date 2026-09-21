@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
-import { StatusBadge } from '@/components/StatusBadge';
+import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import { JobStatus } from '@/lib/enums';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +40,7 @@ export default async function FieldJobPickerPage() {
               <span className="block text-base font-semibold">{job.name}</span>
               <span className="block text-sm font-normal text-zinc-500">{job.address}</span>
             </span>
-            <StatusBadge status={readiness.overall} label={readiness.overall === 'ok' ? 'Ready' : readiness.overall === 'warning' ? 'Attention' : 'Blocked'} />
+            <StatusBadge status={readiness.overall} label={OVERALL_READINESS_LABEL[readiness.overall]} />
           </Link>
         ))}
         {readinessByJob.length === 0 && <p className="py-2 text-sm text-zinc-500">No active or upcoming jobs.</p>}
