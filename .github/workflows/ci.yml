@@ -58,6 +58,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # A fast, explicit type-checking gate — separate from the build step
+      # below, which would also fail on a type error but only after paying
+      # for a full Next.js production build first. Runs after prisma
+      # generate (the Prisma client's generated types are what most of the
+      # app's type-checking actually depends on) and before the domain
+      # tests, so a type error is caught as cheaply as possible.
+      - name: Typecheck
+        run: npm run typecheck
+
       # Pushes schema.prisma straight to a fresh database exactly as a real
       # deployment would need it applied — the most direct regression check
       # available for the SQLite/enum schema issue this project hit during

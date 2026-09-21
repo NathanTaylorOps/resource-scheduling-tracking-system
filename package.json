@@ -2,6 +2,8 @@
   "name": "resource-scheduling-tracking-system",
   "version": "0.1.0",
   "private": true,
+  "author": "Nathan Taylor",
+  "license": "MIT",
   "description": "Field-operations and resource-management platform for a custom-home general contractor: crew scheduling and staffing plans, QR-tagged equipment tracking and reservations, worker/subcontractor/equipment compliance, permits and inspections, preventive maintenance, daily field documentation, and a two-layer honest weather-risk overlay.",
   "scripts": {
     "dev": "next dev",
@@ -12,7 +14,8 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts"
+    "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts",
+    "typecheck": "tsc --noEmit"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
