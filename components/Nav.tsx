@@ -27,7 +27,14 @@ export function Nav() {
   return (
     <header className="border-b border-outdoor-border bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <span className="text-lg font-bold tracking-tight" title="Resource Scheduling & Tracking System">RSTS</span>
+        <Link
+          href="/"
+          className="text-lg font-bold tracking-tight focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+          aria-label="Resource Scheduling & Tracking System — home"
+          title="Resource Scheduling & Tracking System"
+        >
+          RSTS
+        </Link>
 
         {/* Desktop: full link row. Below md, this many links stops fitting a
             single line, so it's replaced entirely by the toggle menu rather

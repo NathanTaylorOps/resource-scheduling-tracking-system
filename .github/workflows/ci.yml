@@ -33,7 +33,7 @@ jobs:
       # A throwaway file, local to the runner — not the dev.db a
       # contributor uses locally, and gone when the job ends.
       DATABASE_URL: 'file:./ci.db'
-      NWS_USER_AGENT: 'coastwood-fieldops-ci (ci@example.com)'
+      NWS_USER_AGENT: 'resource-scheduling-tracking-system-ci (ci@example.com)'
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
