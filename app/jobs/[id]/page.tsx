@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
-import { findOverlaps, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
+import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
+import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WeatherPanel } from '@/components/WeatherPanel';
@@ -24,6 +25,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   });
 
   const readiness = await computeJobReadiness(job.id);
+  const now = new Date();
 
   const workerIds = [...new Set(job.assignments.map((a) => a.workerId))];
   const allAssignments = workerIds.length
@@ -38,7 +40,62 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const workerNameById = new Map(job.assignments.map((a) => [a.worker.id, a.worker.name]));
   const conflictedWorkerNames = [...new Set(conflicts.map((c) => workerNameById.get(c.first.workerId) ?? 'A crew member'))];
 
-  const now = new Date();
+  // --- Crew requirements: this job's staffing plan against who's actually assigned ---
+  const roleRequirements = await prisma.jobRoleRequirement.findMany({ where: { jobId: job.id }, orderBy: { roleOrTrade: 'asc' } });
+  const assignedCountByRole = new Map<string, number>();
+  for (const a of job.assignments) {
+    assignedCountByRole.set(a.roleOnJob, (assignedCountByRole.get(a.roleOnJob) ?? 0) + 1);
+  }
+  const unfilledRoles = findUnfilledRoles(
+    roleRequirements.map((r) => ({ id: r.id, roleOrTrade: r.roleOrTrade, requiredCount: r.requiredCount })),
+    job.assignments.map((a) => ({ roleOnJob: a.roleOnJob })),
+  );
+
+  // --- Equipment reservations: forward bookings on this job's assets, checked
+  // for the same kind of overlap findOverlaps checks for crew ---
+  const reservationsForJob = await prisma.equipmentReservation.findMany({
+    where: { jobId: job.id },
+    include: { equipment: true },
+    orderBy: { start: 'asc' },
+  });
+  const reservedEquipmentIds = [...new Set(reservationsForJob.map((r) => r.equipmentId))];
+  const allReservationsForThoseAssets = reservedEquipmentIds.length
+    ? await prisma.equipmentReservation.findMany({
+        where: { equipmentId: { in: reservedEquipmentIds } },
+        include: { equipment: true },
+      })
+    : [];
+  const equipmentConflicts = findEquipmentConflicts(
+    allReservationsForThoseAssets.map((r) => ({ id: r.id, equipmentId: r.equipmentId, jobId: r.jobId, start: r.start, end: r.end })),
+  ).filter((c) => c.first.jobId === job.id || c.second.jobId === job.id);
+  const conflictedEquipmentNames = [...new Set(
+    equipmentConflicts.map((c) => allReservationsForThoseAssets.find((r) => r.equipmentId === c.equipmentId)?.equipment.name ?? 'An asset'),
+  )];
+
+  // --- Permits & inspections ---
+  const permits = await prisma.permit.findMany({
+    where: { jobId: job.id },
+    include: { inspections: { orderBy: { sequence: 'asc' } } },
+    orderBy: { appliedDate: 'asc' },
+  });
+  const failedInspections = permits.flatMap((p) =>
+    p.inspections.filter((i) => i.status === 'FAILED').map((i) => ({ permit: p, inspection: i })),
+  );
+  const expiredPermits = permits.filter(
+    (p) => p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime()),
+  );
+
+  // --- Daily field log and toolbox talks: informational, don't feed readiness ---
+  const dailyLogs = await prisma.dailyLog.findMany({
+    where: { jobId: job.id },
+    include: { submittedByWorker: true },
+    orderBy: { logDate: 'desc' },
+  });
+  const safetyMeetings = await prisma.safetyMeeting.findMany({
+    where: { jobId: job.id },
+    include: { conductedByWorker: true, attendees: { include: { worker: true } } },
+    orderBy: { meetingDate: 'desc' },
+  });
 
   return (
     <div className="space-y-6">
@@ -58,16 +115,42 @@ export default async function JobDetailPage({ params }: { params: { id: string }
       {/* Readiness breakdown — decomposed, never a single opaque score */}
       <div className="card">
         <h2 className="mb-3 font-semibold">Readiness breakdown</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <ReadinessRow label="Crew" status={readiness.crew} />
           <ReadinessRow label="Equipment" status={readiness.equipment} />
           <ReadinessRow label="Compliance" status={readiness.compliance} />
           <ReadinessRow label="Weather" status={readiness.weather} />
+          <ReadinessRow label="Permits" status={readiness.permits} />
         </div>
         {conflicts.length > 0 && (
           <p className="mt-3 text-sm text-red-700">
             Scheduling conflict: {conflictedWorkerNames.join(', ')} — assigned to two jobs at once during an
             overlapping window.
+          </p>
+        )}
+        {unfilledRoles.length > 0 && (
+          <p className="mt-3 text-sm text-amber-700">
+            Unfilled: {unfilledRoles
+              .map((r) => `${r.roleOrTrade} (${assignedCountByRole.get(r.roleOrTrade) ?? 0} of ${r.requiredCount})`)
+              .join(', ')}.
+          </p>
+        )}
+        {equipmentConflicts.length > 0 && (
+          <p className="mt-3 text-sm text-red-700">
+            Equipment conflict: {conflictedEquipmentNames.join(', ')} — reserved to two jobs over an overlapping
+            window.
+          </p>
+        )}
+        {failedInspections.length > 0 && (
+          <p className="mt-3 text-sm text-red-700">
+            Failed inspection: {failedInspections
+              .map(({ permit, inspection }) => `${inspection.inspectionType.replace(/_/g, ' ').toLowerCase()} (${permit.permitType.toLowerCase()} permit)`)
+              .join(', ')}.
+          </p>
+        )}
+        {expiredPermits.length > 0 && (
+          <p className="mt-3 text-sm text-red-700">
+            Expired permit: {expiredPermits.map((p) => p.permitType.toLowerCase()).join(', ')}.
           </p>
         )}
       </div>
@@ -119,6 +202,115 @@ export default async function JobDetailPage({ params }: { params: { id: string }
               </li>
             ))}
             {equipment.length === 0 && <p className="py-2 text-sm text-zinc-500">No equipment currently assigned.</p>}
+          </ul>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Crew requirements — the staffing plan, independent of who's actually assigned */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Crew requirements</h2>
+          <ul className="divide-y divide-outdoor-border">
+            {roleRequirements.map((r) => {
+              const assignedCount = assignedCountByRole.get(r.roleOrTrade) ?? 0;
+              const met = assignedCount >= r.requiredCount;
+              return (
+                <li key={r.id} className="flex items-center justify-between py-2">
+                  <div>
+                    <div className="font-medium">{r.roleOrTrade}</div>
+                    <div className="text-xs text-zinc-500">{assignedCount} of {r.requiredCount} assigned</div>
+                  </div>
+                  <StatusBadge status={met ? 'ok' : 'warning'} label={met ? 'Filled' : 'Unfilled'} />
+                </li>
+              );
+            })}
+            {roleRequirements.length === 0 && <p className="py-2 text-sm text-zinc-500">No staffing plan set for this job.</p>}
+          </ul>
+        </div>
+
+        {/* Permits & inspections */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Permits &amp; inspections</h2>
+          <ul className="divide-y divide-outdoor-border">
+            {permits.map((p) => (
+              <li key={p.id} className="py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-medium">
+                      {p.permitType.charAt(0) + p.permitType.slice(1).toLowerCase()} permit{p.permitNumber ? ` · ${p.permitNumber}` : ''}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      {p.issuingAuthority} · applied {p.appliedDate.toLocaleDateString()}
+                      {p.issuedDate && ` · issued ${p.issuedDate.toLocaleDateString()}`}
+                      {p.expiryDate && ` · expires ${p.expiryDate.toLocaleDateString()}`}
+                    </div>
+                  </div>
+                  <StatusBadge
+                    status={p.status === 'EXPIRED' ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
+                    label={p.status.charAt(0) + p.status.slice(1).toLowerCase()}
+                  />
+                </div>
+                {p.inspections.length > 0 && (
+                  <ul className="mt-2 space-y-1 border-l border-outdoor-border pl-3">
+                    {p.inspections.map((i) => (
+                      <li key={i.id} className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-600">{i.inspectionType.replace(/_/g, ' ').toLowerCase()}</span>
+                        <span className={i.status === 'FAILED' ? 'font-medium text-red-700' : i.status === 'PASSED' ? 'text-green-700' : 'text-zinc-500'}>
+                          {i.status === 'SCHEDULED' && i.scheduledDate
+                            ? `scheduled ${i.scheduledDate.toLocaleDateString()}`
+                            : i.status.replace(/_/g, ' ').toLowerCase()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+            {permits.length === 0 && <p className="py-2 text-sm text-zinc-500">No permits filed for this job.</p>}
+          </ul>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Daily field log — standard GC documentation, informational only */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Daily field log</h2>
+          <ul className="divide-y divide-outdoor-border">
+            {dailyLogs.map((log) => (
+              <li key={log.id} className="py-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{log.logDate.toLocaleDateString()}</span>
+                  <span className="text-xs text-zinc-500">
+                    {log.crewCount} on site{log.weatherSummary ? ` · ${log.weatherSummary}` : ''}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-zinc-700">{log.workPerformed}</p>
+                {log.delaysNotes && <p className="mt-1 text-xs text-amber-700">Delay: {log.delaysNotes}</p>}
+                <div className="mt-1 text-xs text-zinc-400">Logged by {log.submittedByWorker?.name ?? 'Unattributed'}</div>
+              </li>
+            ))}
+            {dailyLogs.length === 0 && <p className="py-2 text-sm text-zinc-500">No daily logs submitted yet.</p>}
+          </ul>
+        </div>
+
+        {/* Toolbox talks — safety-culture documentation, not a readiness gate */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Toolbox talks</h2>
+          <ul className="divide-y divide-outdoor-border">
+            {safetyMeetings.map((meeting) => (
+              <li key={meeting.id} className="py-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{meeting.topic}</span>
+                  <span className="text-xs text-zinc-500">{meeting.meetingDate.toLocaleDateString()}</span>
+                </div>
+                <div className="text-xs text-zinc-500">Led by {meeting.conductedByWorker.name}</div>
+                <div className="mt-1 text-xs text-zinc-400">
+                  {meeting.attendees.length} attended
+                  {meeting.attendees.length > 0 && `: ${meeting.attendees.map((a) => a.worker.name).join(', ')}`}
+                </div>
+              </li>
+            ))}
+            {safetyMeetings.length === 0 && <p className="py-2 text-sm text-zinc-500">No toolbox talks logged yet.</p>}
           </ul>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { resolveCounterValue, toDomainPlan } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue } from '@/lib/domain/forecasting';
 import { excludeCoveredChildren } from '@/lib/domain/maintenance';
+import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WorkOrderCompleteButton } from '@/components/WorkOrderCompleteButton';
 import { generateEquipmentQrDataUrl } from '@/lib/qr';
@@ -21,6 +22,7 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       maintenancePlans: true,
       workOrders: { orderBy: { createdAt: 'desc' } },
       scanEvents: { orderBy: { timestamp: 'desc' }, take: 10, include: { photos: true, scannedBy: true, job: true } },
+      reservations: { orderBy: { start: 'asc' }, include: { job: true } },
     },
   });
   if (!equipment) notFound();
@@ -34,6 +36,13 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
     equipment.maintenancePlans.map(toDomainPlan),
     equipment.maintenancePlans.map(toDomainPlan),
   );
+
+  // Every reservation here is already scoped to this one asset, so the sweep
+  // naturally only ever compares this asset's bookings against each other.
+  const reservationConflicts = findEquipmentConflicts(
+    equipment.reservations.map((r) => ({ id: r.id, equipmentId: equipment.id, jobId: r.jobId, start: r.start, end: r.end })),
+  );
+  const conflictedReservationIds = new Set(reservationConflicts.flatMap((c) => [c.first.id, c.second.id]));
 
   return (
     <div className="space-y-6">
@@ -114,6 +123,29 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
             );
           })}
           {equipment.compliance.length === 0 && <p className="py-2 text-sm text-zinc-500">No compliance items tracked for this asset.</p>}
+        </ul>
+      </div>
+
+      {/* Reservations — forward bookings, distinct from current custody above */}
+      <div className="card">
+        <h2 className="mb-3 font-semibold">Reservations</h2>
+        <ul className="divide-y divide-outdoor-border">
+          {equipment.reservations.map((r) => (
+            <li key={r.id} className="flex items-center justify-between py-2">
+              <div>
+                <Link href={`/jobs/${r.job.id}`} className="font-medium hover:underline">
+                  {r.job.name}
+                </Link>
+                <div className="text-xs text-zinc-500">
+                  {r.start.toLocaleDateString()} – {r.end.toLocaleDateString()}
+                </div>
+              </div>
+              {conflictedReservationIds.has(r.id) && (
+                <span className="text-xs font-medium text-red-700">Double-booked</span>
+              )}
+            </li>
+          ))}
+          {equipment.reservations.length === 0 && <p className="py-2 text-sm text-zinc-500">No forward bookings for this asset.</p>}
         </ul>
       </div>
 
