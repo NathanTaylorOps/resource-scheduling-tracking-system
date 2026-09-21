@@ -27,7 +27,7 @@ export interface NwsForecastResult {
 }
 
 function userAgent(): string {
-  return process.env.NWS_USER_AGENT ?? 'coastwood-fieldops (set NWS_USER_AGENT in .env)';
+  return process.env.NWS_USER_AGENT ?? 'resource-scheduling-tracking-system (set NWS_USER_AGENT in .env)';
 }
 
 /**

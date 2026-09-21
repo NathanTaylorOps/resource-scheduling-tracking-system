@@ -27,7 +27,7 @@ export function Nav() {
   return (
     <header className="border-b border-outdoor-border bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <span className="text-lg font-bold tracking-tight">Coastwood Field Ops</span>
+        <span className="text-lg font-bold tracking-tight" title="Resource Scheduling & Tracking System">RSTS</span>
 
         {/* Desktop: full link row. Below md, this many links stops fitting a
             single line, so it's replaced entirely by the toggle menu rather

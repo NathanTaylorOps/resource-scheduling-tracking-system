@@ -1,4 +1,4 @@
-# Coastwood Field Ops
+# Resource Scheduling & Tracking System
 
 A field-operations and resource-management platform for a custom-home general contractor — crew scheduling and staffing plans, QR-tagged equipment tracking and reservations, worker, subcontractor, and asset compliance, permits and inspections, preventive maintenance, daily field documentation, a mobile-first view for whoever's actually standing on the job, and an honest weather-risk overlay, in one system instead of a pile of disconnected ones.
 
@@ -75,7 +75,7 @@ This is a local, clone-and-run application by design — SQLite and no hosted de
 
 ```bash
 git clone <this-repo-url>
-cd coastwood-fieldops
+cd resource-scheduling-tracking-system
 npm install
 
 cp .env.example .env

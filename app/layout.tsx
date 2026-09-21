@@ -3,7 +3,7 @@ import './globals.css';
 import { Nav } from '@/components/Nav';
 
 export const metadata: Metadata = {
-  title: 'Coastwood Field Ops',
+  title: 'Resource Scheduling & Tracking System',
   description: 'Crew scheduling, equipment tracking, compliance, and weather risk for a custom-home GC.',
 };
 
