@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { StatusBadge } from '@/components/StatusBadge';
+import { CreateWorkerForm } from '@/components/CreateWorkerForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,10 @@ export default async function WorkersPage() {
   const workers = await prisma.worker.findMany({
     include: { certifications: true },
     orderBy: { name: 'asc' },
+  });
+  const subcontractors = await prisma.subcontractor.findMany({
+    select: { id: true, businessName: true },
+    orderBy: { businessName: 'asc' },
   });
   const now = new Date();
 
@@ -27,12 +32,13 @@ export default async function WorkersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Crew</h1>
         <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline">
           Subcontractor firms →
         </Link>
       </div>
+      <CreateWorkerForm subcontractors={subcontractors} />
 
       {/* Below sm: a table with four columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-
