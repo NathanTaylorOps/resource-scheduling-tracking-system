@@ -14,11 +14,13 @@ interface CreateWorkerBody {
 
 /**
  * Creates a new worker. subcontractorId is required when employmentType is
- * SUBCONTRACTOR and rejected otherwise — a direct employee's compliance is
- * entirely personal (WorkerCertification), so linking one to a firm would
- * misrepresent whose insurance and license actually gate their eligibility
- * to work (see the Worker/Subcontractor relation's own comment in
- * schema.prisma).
+ * SUBCONTRACTOR, and simply ignored otherwise — not rejected as a bad
+ * request, just dropped, since a stray value left over from switching the
+ * employment-type select shouldn't block an otherwise-valid direct-employee
+ * save. A direct employee's compliance is entirely personal
+ * (WorkerCertification), so linking one to a firm would misrepresent whose
+ * insurance and license actually gate their eligibility to work (see the
+ * Worker/Subcontractor relation's own comment in schema.prisma).
  */
 export async function POST(request: NextRequest) {
   let body: CreateWorkerBody;

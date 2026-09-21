@@ -48,6 +48,10 @@ export function CreateJobForm() {
       setError('Enter numeric coordinates.');
       return;
     }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setError('Latitude must be between -90 and 90, and longitude between -180 and 180.');
+      return;
+    }
     if (!targetEndDate) {
       setError('Enter a target completion date.');
       return;
