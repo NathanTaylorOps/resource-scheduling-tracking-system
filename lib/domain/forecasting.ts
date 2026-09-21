@@ -14,9 +14,16 @@ export interface UsageSample {
 }
 
 /**
- * Computes a rolling daily usage rate from a window of counter readings
- * (odometer, engine hours, cycle counts). Returns 0 when there isn't enough
- * history to project from, rather than guessing.
+ * Computes an average daily usage rate from a window of counter readings
+ * (odometer, engine hours, cycle counts) — specifically, the straight-line
+ * rate between the earliest and latest sample in the window, not a
+ * recency-weighted rolling average. Any samples in between the first and
+ * last are currently ignored; the only caller today passes exactly two
+ * points (in-service date, today's reading; see lib/readiness-service.ts),
+ * so that distinction doesn't yet matter in practice, but a future caller
+ * handing this a real multi-point usage history should not expect it to
+ * weight recent activity any differently than old activity. Returns 0 when
+ * there isn't enough history to project from, rather than guessing.
  */
 export function computeDailyUsageRate(samples: UsageSample[]): number {
   if (samples.length < 2) return 0;

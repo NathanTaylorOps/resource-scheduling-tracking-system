@@ -102,6 +102,25 @@ function average(values: number[]): number {
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
+const REFERENCE_YEAR_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Ordinal day-of-year for a (month, day) pair, using a fixed non-leap
+ * reference year so the comparison only depends on the calendar position,
+ * not which real year a sample happened to fall in (and never produces a
+ * Feb-29-shaped edge case from a leap-year source date).
+ *
+ * This replaced an earlier `month * 31 + day` approximation: treating every
+ * month as 31 days pushes any date after a shorter month (Feb, Apr, Jun,
+ * Sep, Nov) artificially forward, which could mis-classify a day as inside
+ * or outside a +/-7-day window by a day or two right around those month
+ * boundaries. Computing a real calendar ordinal removes that error rather
+ * than just documenting it as an accepted approximation.
+ */
+function dayOfYear(month: number, day: number): number {
+  return Math.round((Date.UTC(2001, month - 1, day) - Date.UTC(2001, 0, 1)) / REFERENCE_YEAR_DAY_MS);
+}
+
 /** True when (month, day) falls within +/- windowDays of (targetMonth, targetDay), wrapping across year boundaries. */
 function isWithinDayOfYearWindow(
   month: number,
@@ -110,7 +129,7 @@ function isWithinDayOfYearWindow(
   targetDay: number,
   windowDays: number,
 ): boolean {
-  const toOrdinal = (m: number, d: number) => m * 31 + d; // coarse but adequate for a +/-7 day window check
-  const diff = Math.abs(toOrdinal(month, day) - toOrdinal(targetMonth, targetDay));
-  return diff <= windowDays || diff >= 12 * 31 - windowDays;
+  const DAYS_IN_REFERENCE_YEAR = 365;
+  const diff = Math.abs(dayOfYear(month, day) - dayOfYear(targetMonth, targetDay));
+  return diff <= windowDays || diff >= DAYS_IN_REFERENCE_YEAR - windowDays;
 }

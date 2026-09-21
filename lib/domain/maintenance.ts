@@ -10,8 +10,9 @@
  *
  * A plan qualifies as nested under a parent when its interval divides evenly
  * into the parent's interval on the same unit — e.g. a 30-day plan nests
- * under a 90-day plan (90 / 30 = 3), but a 45-day plan does not nest cleanly
- * under a 90-day plan on a shared due date and is left to run independently.
+ * under a 90-day plan (90 / 30 = 3), but a 40-day plan does not divide
+ * evenly into a 90-day one (90 / 40 = 2.25) and is left to run
+ * independently, per the modulo check in isChildCoveredByParent below.
  */
 
 import { ComplianceSchedule, recordCompletion } from './compliance';
