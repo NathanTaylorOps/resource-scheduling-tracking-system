@@ -37,6 +37,36 @@ const DUE_SOON_WINDOW_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * How close to its nominal due point a compliance or maintenance item has to
+ * be before it reads as "due soon," expressed in that item's own counter
+ * unit. DUE_SOON_WINDOW_DAYS (14) is correct as written only for a
+ * CALENDAR_DAYS schedule — it literally is 14 days. Reusing the same "14"
+ * for a schedule measured in engine-hours or cycles compares a day count
+ * against a different kind of quantity, and badly understates how much
+ * runway a heavy-use asset actually has left: 14 run-hours is typically a
+ * couple of days' work, not two weeks.
+ *
+ * These are reference figures for how far out "due soon" should read on
+ * each counter — a documented judgment call, the same kind
+ * INFORMAL_RECENCY_WINDOW_DAYS makes in lib/domain/certifications.ts —
+ * rather than a per-asset rate derived from usage history. A derived window
+ * would shrink toward zero for a low-usage asset (an idle asset's rate is
+ * ~0, so its "due soon" window would be ~0 too) and behave inconsistently
+ * across assets with different duty cycles; a fixed reference window stays
+ * predictable, which matters more for a status a PM checks at a glance than
+ * being exactly right for any one asset's actual pace.
+ */
+const DUE_SOON_WINDOW_BY_COUNTER: Record<string, number> = {
+  CALENDAR_DAYS: DUE_SOON_WINDOW_DAYS,
+  RUN_HOURS: 20, // roughly what two weeks of active field use looks like on an hour meter
+  CYCLES: 10,
+};
+
+export function resolveDueSoonWindow(counterType: string): number {
+  return DUE_SOON_WINDOW_BY_COUNTER[counterType] ?? DUE_SOON_WINDOW_DAYS;
+}
+
+/**
  * Resolves the live reading for whichever counter a compliance or
  * maintenance item is governed by. Calendar-day counters are computed on
  * the fly from the asset's in-service date rather than trusted from a
@@ -132,7 +162,7 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   // reservation for the same asset? ---
   const equipment = await prisma.equipment.findMany({
     where: { currentJobId: jobId },
-    include: { compliance: true, lifeCounters: true },
+    include: { compliance: true, lifeCounters: true, maintenancePlans: true },
   });
   const hasAssetDownForService = equipment.some((e) => e.status === 'DOWN_FOR_SERVICE');
 
@@ -202,7 +232,36 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
           dueValue: c.dueValue,
         },
         currentValue,
-        DUE_SOON_WINDOW_DAYS,
+        resolveDueSoonWindow(c.counterType),
+      );
+      if (status.status === 'overdue') hasExpiredItem = true;
+      if (status.status === 'due_soon' || status.status === 'in_tolerance') hasExpiringSoonItem = true;
+    }
+
+    // Preventive-maintenance plans feed the same compliance component as
+    // calibration/inspection/warranty items above, rather than a separate
+    // readiness component of their own — structurally they're the same
+    // fixed-interval/tolerance/hardLimit schedule (see
+    // lib/domain/maintenance.ts), and an overdue service is the same kind
+    // of "this asset's standing has lapsed" fact a PM needs surfaced the
+    // same way, whichever table it's tracked in. WorkOrder status isn't
+    // separately checked here: an asset actually down for service already
+    // shows up via hasAssetDownForService above, so a work order mirrors a
+    // fact readiness already has rather than adding a new one.
+    for (const plan of item.maintenancePlans) {
+      const currentValue = resolveCounterValue(plan.counterType, item, now);
+      if (currentValue === null) continue;
+
+      const status = getComplianceStatus(
+        {
+          unit: plan.counterType,
+          intervalValue: plan.intervalValue,
+          toleranceValue: plan.toleranceValue,
+          hardLimit: plan.hardLimit,
+          dueValue: plan.dueValue,
+        },
+        currentValue,
+        resolveDueSoonWindow(plan.counterType),
       );
       if (status.status === 'overdue') hasExpiredItem = true;
       if (status.status === 'due_soon' || status.status === 'in_tolerance') hasExpiringSoonItem = true;

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
-import { resolveCounterValue } from '@/lib/readiness-service';
+import { resolveCounterValue, resolveDueSoonWindow } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -50,7 +50,7 @@ export default async function EquipmentPage() {
                 const status = getComplianceStatus(
                   { unit: c.counterType, intervalValue: c.intervalValue, toleranceValue: c.toleranceValue, hardLimit: c.hardLimit, dueValue: c.dueValue },
                   currentValue,
-                  14,
+                  resolveDueSoonWindow(c.counterType),
                 ).status;
                 if (status === 'overdue') return 'blocked';
                 if ((status === 'due_soon' || status === 'in_tolerance') && acc !== 'blocked') return 'warning';

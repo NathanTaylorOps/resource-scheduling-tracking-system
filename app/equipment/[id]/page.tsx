@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { resolveCounterValue, toDomainPlan } from '@/lib/readiness-service';
+import { resolveCounterValue, resolveDueSoonWindow, toDomainPlan } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue } from '@/lib/domain/forecasting';
 import { excludeCoveredChildren } from '@/lib/domain/maintenance';
@@ -32,9 +32,34 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
   const protocol = host?.includes('localhost') ? 'http' : 'https';
   const qrDataUrl = await generateEquipmentQrDataUrl(equipment.qrCode, `${protocol}://${host}`);
 
+  // Each plan's live status against its own current counter reading — the
+  // same getComplianceStatus check the Compliance section below runs, since
+  // a maintenance plan and a compliance item are both fixed-interval/
+  // tolerance/hardLimit schedules. excludeCoveredChildren's job is narrower
+  // than its old call site here treated it as: it only drops a child plan
+  // whose parent is ALSO due this cycle, it never decides what's due in the
+  // first place — that filtering has to happen before it's called, using the
+  // status computed here, or every plan shows regardless of standing.
+  const allDomainPlans = equipment.maintenancePlans.map(toDomainPlan);
+  const maintenanceStatusById = new Map(
+    equipment.maintenancePlans.map((plan) => {
+      const currentValue = resolveCounterValue(plan.counterType, equipment, now);
+      const result = currentValue === null
+        ? null
+        : getComplianceStatus(
+            { unit: plan.counterType, intervalValue: plan.intervalValue, toleranceValue: plan.toleranceValue, hardLimit: plan.hardLimit, dueValue: plan.dueValue },
+            currentValue,
+            resolveDueSoonWindow(plan.counterType),
+          );
+      return [plan.id, result] as const;
+    }),
+  );
   const duePlans = excludeCoveredChildren(
-    equipment.maintenancePlans.map(toDomainPlan),
-    equipment.maintenancePlans.map(toDomainPlan),
+    allDomainPlans.filter((p) => {
+      const result = maintenanceStatusById.get(p.id);
+      return result !== null && result !== undefined && result.status !== 'ok';
+    }),
+    allDomainPlans,
   );
 
   // Every reservation here is already scoped to this one asset, so the sweep
@@ -80,7 +105,7 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
               ? getComplianceStatus(
                   { unit: c.counterType, intervalValue: c.intervalValue, toleranceValue: c.toleranceValue, hardLimit: c.hardLimit, dueValue: c.dueValue },
                   currentValue,
-                  14,
+                  resolveDueSoonWindow(c.counterType),
                 )
               : null;
             const status = !result ? 'warning' : result.status === 'overdue' ? 'blocked' : result.status === 'ok' ? 'ok' : 'warning';
@@ -153,15 +178,31 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       <div className="card">
         <h2 className="mb-3 font-semibold">Preventive maintenance</h2>
         <ul className="divide-y divide-outdoor-border">
-          {duePlans.map((plan) => (
-            <li key={plan.id} className="py-2">
-              <div className="font-medium">{equipment.maintenancePlans.find((p) => p.id === plan.id)?.description}</div>
-              <div className="text-xs text-zinc-500">
-                Every {plan.schedule.intervalValue} {unitLabel(plan.schedule.unit)}, due at {plan.schedule.dueValue}
-              </div>
-            </li>
-          ))}
-          {duePlans.length === 0 && <p className="py-2 text-sm text-zinc-500">No maintenance plans configured.</p>}
+          {duePlans.map((plan) => {
+            const result = maintenanceStatusById.get(plan.id);
+            const status = !result ? 'warning' : result.status === 'overdue' ? 'blocked' : 'warning';
+            const currentValue = result ? plan.schedule.dueValue - result.remainingToDue : null;
+            return (
+              <li key={plan.id} className="flex items-center justify-between py-2">
+                <div>
+                  <div className="font-medium">{equipment.maintenancePlans.find((p) => p.id === plan.id)?.description}</div>
+                  <div className="text-xs text-zinc-500">
+                    Every {plan.schedule.intervalValue} {unitLabel(plan.schedule.unit)}, due at {plan.schedule.dueValue}
+                    {currentValue !== null && ` · currently at ${Math.round(currentValue)} ${unitLabel(plan.schedule.unit)}`}
+                  </div>
+                </div>
+                <StatusBadge
+                  status={status}
+                  label={!result ? 'No reading' : result.status === 'overdue' ? 'Overdue' : result.status === 'in_tolerance' ? 'In grace period' : 'Due soon'}
+                />
+              </li>
+            );
+          })}
+          {duePlans.length === 0 && (
+            <p className="py-2 text-sm text-zinc-500">
+              {equipment.maintenancePlans.length === 0 ? 'No maintenance plans configured.' : 'No maintenance due right now.'}
+            </p>
+          )}
         </ul>
       </div>
 
