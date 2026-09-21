@@ -1,9 +1,10 @@
-// Coastwood Builders — Field Operations Platform
-// Data model. See /docs or the project README for the design rationale
-// behind the compliance and maintenance tables in particular — they follow
-// aviation maintenance-records practice (multi-counter, non-cumulative
-// tolerance windows, hard limits) rather than the single-counter model used
-// by most construction equipment-tracking tools.
+// Resource Scheduling & Tracking System — built for the fictional Coastwood
+// Builders scenario (see the project README's Scope section).
+// Data model. See the project README for the design rationale behind the
+// compliance and maintenance tables in particular — they follow aviation
+// maintenance-records practice (multi-counter, non-cumulative tolerance
+// windows, hard limits) rather than the single-counter model used by most
+// construction equipment-tracking tools.
 
 generator client {
   provider = "prisma-client-js"
