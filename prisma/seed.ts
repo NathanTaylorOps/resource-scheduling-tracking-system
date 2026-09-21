@@ -7,7 +7,8 @@
  * Run with: npm run db:seed
  */
 
-import { PrismaClient, EmploymentType, JobStatus, WeatherSensitivity, EquipmentStatus, CounterType, ComplianceType, ScanAction, WorkOrderSource, WorkOrderStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { EmploymentType, JobStatus, WeatherSensitivity, EquipmentStatus, CounterType, ComplianceType, ScanAction, WorkOrderSource, WorkOrderStatus } from '../lib/enums';
 
 const prisma = new PrismaClient();
 

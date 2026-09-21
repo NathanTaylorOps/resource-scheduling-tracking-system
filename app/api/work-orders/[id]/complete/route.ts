@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { WorkOrderStatus, WorkOrderSource, EquipmentStatus } from '@prisma/client';
+import { WorkOrderStatus, WorkOrderSource, EquipmentStatus } from '@/lib/enums';
 import { applyCompletionToHierarchy, type MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
 import { resolveCounterValue } from '@/lib/readiness-service';
 

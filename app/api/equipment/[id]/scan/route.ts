@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { Prisma, ScanAction, WorkOrderSource, WorkOrderStatus, EquipmentStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { ScanAction, WorkOrderSource, WorkOrderStatus, EquipmentStatus } from '@/lib/enums';
 
 interface ScanRequestBody {
   action: ScanAction;

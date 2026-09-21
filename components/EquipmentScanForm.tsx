@@ -4,9 +4,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { compressImageFile } from '@/lib/image';
 
-// Mirrors the ScanAction enum in prisma/schema.prisma. Kept as a local
-// literal union rather than importing the generated Prisma type so this
-// client bundle has no dependency on the database layer at all.
+// Mirrors the ScanAction values in lib/enums.ts. Kept as a local literal
+// union rather than importing that shared type so this client bundle has
+// no dependency on the database layer at all.
 type ScanActionValue = 'CHECK_OUT' | 'CHECK_IN' | 'LOCATION_UPDATE' | 'DEFECT_REPORTED';
 
 const ACTIONS: Array<{ value: ScanActionValue; label: string; helper: string }> = [

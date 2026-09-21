@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
-import { JobStatus } from '@prisma/client';
+import { JobStatus } from '@/lib/enums';
 import { computeJobReadiness } from '@/lib/readiness-service';
 import { JobMapLoader } from '@/components/JobMapLoader';
 import { StatusBadge } from '@/components/StatusBadge';

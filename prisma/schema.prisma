@@ -18,13 +18,21 @@ datasource db {
 // Jobs and crew
 // ---------------------------------------------------------------------------
 
+// Status/category-style fields below are plain Strings, not Prisma `enum`s.
+// SQLite has no native enum column type, so Prisma's SQLite connector
+// doesn't support the `enum` keyword in this schema at all — this isn't a
+// stylistic choice, it's a hard connector limitation. The allowed values for
+// each field are defined once, as a const-object-plus-union-type pair, in
+// lib/enums.ts, which gives the rest of the app the same value/type
+// ergonomics a real enum would without the database dependency.
+
 model Job {
   id             String    @id @default(cuid())
   name           String
   address        String
   latitude       Float
   longitude      Float
-  status         JobStatus @default(PLANNING)
+  status         String    @default("PLANNING")
   startDate      DateTime
   targetEndDate  DateTime
 
@@ -32,7 +40,7 @@ model Job {
   // doc describes tagging individual tasks (a pour, a roofing day, a crane
   // lift) with their own thresholds. Tagging the job as a whole is the
   // honest scope for v1; per-task tagging is a documented roadmap item.
-  weatherSensitivity WeatherSensitivity @default(CONDITIONAL)
+  weatherSensitivity String @default("CONDITIONAL")
 
   assignments    Assignment[]
   scanEvents     ScanEvent[]
@@ -42,24 +50,11 @@ model Job {
   updatedAt      DateTime  @updatedAt
 }
 
-enum JobStatus {
-  PLANNING
-  ACTIVE
-  ON_HOLD
-  COMPLETE
-}
-
-enum WeatherSensitivity {
-  INSENSITIVE
-  CONDITIONAL
-  SENSITIVE
-}
-
 model Worker {
   id             String         @id @default(cuid())
   name           String
   trade          String
-  employmentType EmploymentType @default(DIRECT_EMPLOYEE)
+  employmentType String         @default("DIRECT_EMPLOYEE")
   hireDate       DateTime
   phone          String?
   email          String?
@@ -70,11 +65,6 @@ model Worker {
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-}
-
-enum EmploymentType {
-  DIRECT_EMPLOYEE
-  SUBCONTRACTOR
 }
 
 model Assignment {
@@ -120,7 +110,7 @@ model Equipment {
   name           String
   category       String
   qrCode         String          @unique
-  status         EquipmentStatus @default(ACTIVE)
+  status         String          @default("ACTIVE")
   acquisitionDate DateTime
   inServiceDate  DateTime
 
@@ -139,14 +129,6 @@ model Equipment {
   updatedAt      DateTime @updatedAt
 }
 
-enum EquipmentStatus {
-  ACTIVE
-  IDLE
-  IN_TRANSIT
-  DOWN_FOR_SERVICE
-  RETIRED
-}
-
 // An asset can be tracked on more than one counter at once — a compressor
 // on both calendar age and run-hours, for instance. Each counter is its own
 // row so compliance and maintenance schedules can reference whichever one
@@ -154,7 +136,7 @@ enum EquipmentStatus {
 model EquipmentLifeCounter {
   id            String      @id @default(cuid())
   equipmentId   String
-  counterType   CounterType
+  counterType   String
   currentValue  Float
   updatedAt     DateTime    @updatedAt
 
@@ -163,20 +145,14 @@ model EquipmentLifeCounter {
   @@unique([equipmentId, counterType])
 }
 
-enum CounterType {
-  CALENDAR_DAYS
-  RUN_HOURS
-  CYCLES
-}
-
 // Calibration, inspection, and warranty tracking. The interval/tolerance/
 // hardLimit/dueValue fields implement the non-cumulative tolerance-window
 // pattern in lib/domain/compliance.ts.
 model EquipmentCompliance {
   id                String          @id @default(cuid())
   equipmentId       String
-  complianceType    ComplianceType
-  counterType       CounterType
+  complianceType    String
+  counterType       String
   intervalValue     Float
   toleranceValue    Float
   hardLimit         Boolean         @default(false)
@@ -193,12 +169,6 @@ model EquipmentCompliance {
   @@index([equipmentId])
 }
 
-enum ComplianceType {
-  CALIBRATION
-  INSPECTION
-  WARRANTY
-}
-
 // Preventive-maintenance plans. parentPlanId enables the nested-hierarchy
 // suppression logic in lib/domain/maintenance.ts — a 30-day plan nested
 // under a 90-day plan is satisfied when the 90-day plan is completed.
@@ -207,7 +177,7 @@ model MaintenancePlan {
   equipmentId    String
   parentPlanId   String?
   description    String
-  counterType    CounterType
+  counterType    String
   intervalValue  Float
   toleranceValue Float
   hardLimit      Boolean           @default(false)
@@ -229,8 +199,8 @@ model WorkOrder {
   id                  String           @id @default(cuid())
   equipmentId         String
   maintenancePlanId   String?
-  source              WorkOrderSource
-  status              WorkOrderStatus  @default(OPEN)
+  source              String
+  status              String           @default("OPEN")
   description         String
   completedAtValue    Float?
   completedAt         DateTime?
@@ -245,17 +215,6 @@ model WorkOrder {
   @@index([equipmentId])
 }
 
-enum WorkOrderSource {
-  SCHEDULED
-  DEFECT_REPORTED
-}
-
-enum WorkOrderStatus {
-  OPEN
-  IN_PROGRESS
-  COMPLETED
-}
-
 // Append-only QR scan / custody audit trail. Never updated in place — the
 // current location fields on Equipment are a projection of the latest scan,
 // but the full history stays here for chain-of-custody review.
@@ -264,7 +223,7 @@ model ScanEvent {
   equipmentId    String
   scannedByWorkerId String?
   jobId          String?
-  action         ScanAction
+  action         String
   timestamp      DateTime   @default(now())
   latitude       Float?
   longitude      Float?
@@ -276,13 +235,6 @@ model ScanEvent {
   photos         ScanPhoto[]
 
   @@index([equipmentId])
-}
-
-enum ScanAction {
-  CHECK_OUT
-  CHECK_IN
-  LOCATION_UPDATE
-  DEFECT_REPORTED
 }
 
 model ScanPhoto {
@@ -306,7 +258,7 @@ model ScanPhoto {
 model WeatherCache {
   id         String      @id @default(cuid())
   jobId      String
-  layer      WeatherLayer
+  layer      String
   dataJson   String
   fetchedAt  DateTime    @default(now())
   staleAfter DateTime
@@ -314,9 +266,4 @@ model WeatherCache {
   job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@unique([jobId, layer])
-}
-
-enum WeatherLayer {
-  FORECAST
-  OUTLOOK
 }

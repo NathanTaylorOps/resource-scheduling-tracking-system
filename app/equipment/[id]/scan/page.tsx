@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { JobStatus } from '@prisma/client';
+import { JobStatus } from '@/lib/enums';
 import { EquipmentScanForm } from '@/components/EquipmentScanForm';
 
 export const dynamic = 'force-dynamic';

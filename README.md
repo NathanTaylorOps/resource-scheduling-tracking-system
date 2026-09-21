@@ -105,6 +105,8 @@ The domain-logic separation is deliberate: `lib/domain` holds every rule that ac
 
 `prisma/schema.prisma` is the source of truth, and it's commented in place rather than duplicated here. At a glance: `Job`, `Worker`, and `Assignment` cover crew scheduling; `Equipment`, `EquipmentLifeCounter`, `EquipmentCompliance`, and `MaintenancePlan` (self-referential, for the nested-hierarchy logic) cover the asset side; `WorkOrder` and the append-only `ScanEvent`/`ScanPhoto` pair cover custody and repair history; `WeatherCache` holds the two forecast layers separately, keyed by job and layer.
 
+Status- and category-style fields (job status, equipment status, scan action, and so on) are plain `String` columns rather than Prisma `enum`s — SQLite has no native enum type, so the SQLite connector doesn't support the `enum` keyword in schema.prisma at all. `lib/enums.ts` is the single source of truth for each field's allowed values, exported as a const-object-plus-union-type pair so the rest of the app gets the same value/type ergonomics a real generated enum would.
+
 ## Known limitations / roadmap
 
 Written down here rather than left for someone to discover:
