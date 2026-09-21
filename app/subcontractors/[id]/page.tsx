@@ -35,10 +35,17 @@ export default async function SubcontractorDetailPage({ params }: { params: { id
           <h1 className="text-2xl font-bold tracking-tight">{subcontractor.businessName}</h1>
           <p className="text-sm text-zinc-500">{subcontractor.trade}</p>
         </div>
-        <StatusBadge
-          status={compliance.hasExpiredItem ? 'blocked' : compliance.hasExpiringSoonItem ? 'warning' : 'ok'}
-          label={compliance.hasExpiredItem ? 'Compliance lapsed' : compliance.hasExpiringSoonItem ? 'Review needed' : 'All current'}
-        />
+        {/* Same full-width-stretch fix as the job detail page's header badge —
+            self-start opts this flex item out of the flex-col (mobile) row's
+            inherited items-stretch; sm:self-center matches the row's own
+            sm:items-center once it's actually a row. See that page's comment
+            for the underlying CSS mechanics. */}
+        <div className="self-start sm:self-center">
+          <StatusBadge
+            status={compliance.hasExpiredItem ? 'blocked' : compliance.hasExpiringSoonItem ? 'warning' : 'ok'}
+            label={compliance.hasExpiredItem ? 'Compliance lapsed' : compliance.hasExpiringSoonItem ? 'Review needed' : 'All current'}
+          />
+        </div>
       </div>
 
       <div className="card">

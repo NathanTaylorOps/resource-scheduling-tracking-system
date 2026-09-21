@@ -162,7 +162,16 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             <h1 className="text-2xl font-bold tracking-tight">{job.name}</h1>
             <p className="text-sm text-zinc-500">{job.address}</p>
           </div>
-          <StatusBadge status={readiness.overall} label={readiness.overall === 'ok' ? 'Ready' : readiness.overall === 'warning' ? 'Needs attention' : 'Blocked'} />
+          {/* StatusBadge is an inline-flex span, but as a direct flex-item child
+              of the flex-col (mobile) state of the row above, it still
+              inherits the parent's default items-stretch and stretches to a
+              full-width bar below the sm: breakpoint — inline-flex governs
+              its OWN children's layout, not how it behaves as someone else's
+              flex item. self-start opts it out of that stretch; sm:self-center
+              matches the row's own sm:items-center once it's actually a row. */}
+          <div className="self-start sm:self-center">
+            <StatusBadge status={readiness.overall} label={readiness.overall === 'ok' ? 'Ready' : readiness.overall === 'warning' ? 'Needs attention' : 'Blocked'} />
+          </div>
         </div>
       </div>
 
