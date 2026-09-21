@@ -6,10 +6,9 @@
 # design (see README, "Tech stack").
 #
 # Uses `npm install` rather than `npm ci`, and `prisma db push` rather than
-# `prisma migrate deploy`, because no package-lock.json or prisma/migrations/
-# history is committed yet — see README, "Known limitations / roadmap", for
-# why. Both are the natural upgrade once a lockfile and a real migration
-# history exist.
+# `prisma migrate deploy`, since no package-lock.json or prisma/migrations/
+# history exists yet. Both are the natural upgrade once a lockfile and a
+# real migration history exist.
 name: CI
 
 on:
