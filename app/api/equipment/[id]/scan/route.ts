@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { Prisma } from '@prisma/client';
-import { ScanAction, WorkOrderSource, WorkOrderStatus, EquipmentStatus } from '@/lib/enums';
+import type { Prisma } from '@prisma/client';
+import { ScanAction, WorkOrderSource, WorkOrderStatus } from '@/lib/enums';
+import { custodyUpdateFor } from '@/lib/domain/custody';
 
 interface ScanRequestBody {
   action: ScanAction;
@@ -86,7 +87,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       const updatedEquipment = await tx.equipment.update({
         where: { id: equipment.id },
-        data: custodyUpdateFor(body),
+        // custodyUpdateFor is pure domain logic (lib/domain/custody.ts) —
+        // this cast is the one place its plain field-shaped result crosses
+        // into a Prisma-typed call.
+        data: custodyUpdateFor(body) as Prisma.EquipmentUpdateInput,
       });
 
       let workOrderId: string | null = null;
@@ -112,35 +116,5 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       { error: err instanceof Error ? err.message : 'The scan could not be recorded.' },
       { status: 500 },
     );
-  }
-}
-
-function custodyUpdateFor(body: ScanRequestBody): Prisma.EquipmentUpdateInput {
-  switch (body.action) {
-    case ScanAction.CHECK_OUT:
-      // Custody follows the crew member who scanned it out, not just the
-      // job — that's the difference between "somewhere at Harbor Point"
-      // and "signed for by Marcus" when a GM goes looking for an asset.
-      return {
-        currentJobId: body.jobId,
-        currentWorkerId: body.scannedByWorkerId,
-        locationNote: null,
-        status: EquipmentStatus.ACTIVE,
-      };
-    case ScanAction.CHECK_IN:
-      return {
-        currentJobId: null,
-        currentWorkerId: null,
-        locationNote: body.locationNote?.trim() || 'Yard',
-        status: EquipmentStatus.IDLE,
-      };
-    case ScanAction.LOCATION_UPDATE:
-      return { locationNote: body.locationNote!.trim() };
-    case ScanAction.DEFECT_REPORTED:
-      // Deliberately leaves currentJobId/currentWorkerId untouched — the
-      // asset hasn't moved, it's just been flagged where it sits.
-      return { status: EquipmentStatus.DOWN_FOR_SERVICE };
-    default:
-      return {};
   }
 }

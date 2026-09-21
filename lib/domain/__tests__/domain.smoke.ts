@@ -2,8 +2,7 @@
  * Standalone smoke test for the domain logic layer. Run with:
  *   npx tsx lib/domain/__tests__/domain.smoke.ts
  *
- * Not a substitute for a real test runner (Vitest is wired up once
- * `npm install` has run — see package.json) but this file has zero external
+ * Not a substitute for a real test runner, but this file has zero external
  * dependencies, so it can be executed immediately without installing
  * anything, and it exercises the numeric worked examples the design is
  * built around.
@@ -15,6 +14,7 @@ import { findOverlaps, calculateUtilization } from '../scheduling';
 import { getCertificationStatus, canAssignWorker } from '../certifications';
 import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePlan } from '../maintenance';
 import { computeReadiness } from '../readiness';
+import { custodyUpdateFor } from '../custody';
 
 let passed = 0;
 let failed = 0;
@@ -158,6 +158,37 @@ console.log('\nreadiness.ts — composite decomposable score');
 
   const blocked = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'blocked', weather: 'warning' });
   assertEqual('a single blocked component blocks the whole job', blocked.overall, 'blocked');
+}
+
+console.log('\ncustody.ts — what a scan action does to custody and status');
+{
+  const checkOut = custodyUpdateFor({ action: 'CHECK_OUT', scannedByWorkerId: 'w-marcus', jobId: 'job-cedar-hollow' });
+  assertEqual('check-out assigns the job and the scanning worker, and clears any yard note', checkOut, {
+    currentJobId: 'job-cedar-hollow',
+    currentWorkerId: 'w-marcus',
+    locationNote: null,
+    status: 'ACTIVE',
+  });
+
+  const checkIn = custodyUpdateFor({ action: 'CHECK_IN', scannedByWorkerId: 'w-marcus', locationNote: '  Yard — Bay 2  ' });
+  assertEqual('check-in releases custody and files the trimmed location note', checkIn, {
+    currentJobId: null,
+    currentWorkerId: null,
+    locationNote: 'Yard — Bay 2',
+    status: 'IDLE',
+  });
+
+  const checkInNoNote = custodyUpdateFor({ action: 'CHECK_IN', scannedByWorkerId: 'w-marcus' });
+  assertEqual('check-in with no note on hand still files a location — the yard', checkInNoNote.locationNote, 'Yard');
+
+  const locationUpdate = custodyUpdateFor({ action: 'LOCATION_UPDATE', scannedByWorkerId: 'w-jules', locationNote: '  Bay 3  ' });
+  assertEqual('a location update touches only the location note', locationUpdate, { locationNote: 'Bay 3' });
+
+  const locationUpdateNoNote = custodyUpdateFor({ action: 'LOCATION_UPDATE', scannedByWorkerId: 'w-jules' });
+  assertEqual('a location update with no note on hand degrades gracefully rather than throwing', locationUpdateNoNote.locationNote, undefined);
+
+  const defect = custodyUpdateFor({ action: 'DEFECT_REPORTED', scannedByWorkerId: 'w-bigsam' });
+  assertEqual('a defect report takes the asset down without moving it', defect, { status: 'DOWN_FOR_SERVICE' });
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

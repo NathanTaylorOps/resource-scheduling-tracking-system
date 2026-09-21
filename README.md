@@ -89,8 +89,8 @@ app/                  Next.js App Router pages and API routes
   jobs/ workers/ equipment/ schedule/ map/   One route tree per major screen
 components/           Shared React components (StatusBadge, WeatherPanel, the equipment scan form, the map)
 lib/domain/           Pure, framework-free business logic — scheduling, compliance, certifications,
-                       maintenance hierarchy, forecasting, readiness scoring. No Prisma or Next.js
-                       imports in this folder; it's tested standalone (see below).
+                       maintenance hierarchy, forecasting, readiness scoring, scan-to-custody rules.
+                       No Prisma or Next.js imports in this folder; it's tested standalone (see below).
 lib/domain/__tests__/  A dependency-free assertion-based test suite for lib/domain — runs under tsx,
                        no test framework required.
 lib/weather/          The two weather-layer integrations (NWS forecast, Open-Meteo climatology)
