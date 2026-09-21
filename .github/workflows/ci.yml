@@ -42,8 +42,7 @@ jobs:
         with:
           node-version: '20'
           # No cache: 'npm' — actions/setup-node's built-in npm cache keys
-          # off a committed lockfile, and this repo doesn't have one yet
-          # (see README, "Known limitations / roadmap").
+          # off a committed lockfile, and this repo doesn't have one yet.
 
       - name: Install dependencies
         run: npm install
