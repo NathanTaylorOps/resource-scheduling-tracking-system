@@ -1,0 +1,65 @@
+# Runs on every push and pull request: installs the app the same way the
+# README's "Getting started" section does, applies the committed Prisma
+# migrations to a throwaway SQLite database, runs the dependency-free
+# domain-logic suite, and does a full production build. Nothing here needs
+# a database service or any secret — that's the payoff of this being a
+# local-SQLite app by design (see README, "Tech stack").
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      # A throwaway file, local to the runner — not the dev.db a
+      # contributor uses locally, and gone when the job ends.
+      DATABASE_URL: 'file:./ci.db'
+      NWS_USER_AGENT: 'coastwood-fieldops-ci (ci@example.com)'
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Explicit rather than relying on npm's postinstall hook — some npm
+      # configurations (this project's own local setup among them, see
+      # README) gate lifecycle scripts, so the client generation that
+      # matters for the build below is spelled out as its own step.
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      # Applies prisma/migrations/ to a fresh database exactly as a real
+      # deployment would — the most direct regression check available for
+      # the SQLite/enum schema issue this project hit during its first
+      # real run (see README, "Data model").
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Run the domain-logic test suite
+        run: npm run test:domain
+
+      - name: Build
+        run: npm run build
