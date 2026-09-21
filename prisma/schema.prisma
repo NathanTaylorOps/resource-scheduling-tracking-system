@@ -45,6 +45,11 @@ model Job {
   assignments    Assignment[]
   scanEvents     ScanEvent[]
   weatherCache   WeatherCache[]
+  roleRequirements      JobRoleRequirement[]
+  equipmentReservations EquipmentReservation[]
+  permits        Permit[]
+  dailyLogs      DailyLog[]
+  safetyMeetings SafetyMeeting[]
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -62,6 +67,9 @@ model Worker {
   assignments    Assignment[]
   certifications WorkerCertification[]
   scanEvents     ScanEvent[]
+  dailyLogsSubmitted      DailyLog[]
+  safetyMeetingsConducted SafetyMeeting[]
+  safetyMeetingAttendance SafetyMeetingAttendee[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -101,6 +109,24 @@ model WorkerCertification {
   @@index([workerId])
 }
 
+// A job's staffing plan, independent of who's actually assigned. Lets
+// readiness distinguish "nobody's cert has lapsed" from "this job needs a
+// licensed electrician and none is assigned at all" — the gap the rest of
+// the compliance tracking can't see because it only ever looks at workers
+// already on the job. roleOrTrade is matched against Assignment.roleOnJob
+// by exact string, the same way a real staffing plan names a role rather
+// than a fuzzy trade category — see findUnfilledRoles in lib/domain/scheduling.ts.
+model JobRoleRequirement {
+  id            String @id @default(cuid())
+  jobId         String
+  roleOrTrade   String
+  requiredCount Int    @default(1)
+
+  job           Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
 // ---------------------------------------------------------------------------
 // Equipment: identity, location, compliance, and maintenance
 // ---------------------------------------------------------------------------
@@ -124,6 +150,7 @@ model Equipment {
   maintenancePlans MaintenancePlan[]
   workOrders     WorkOrder[]
   scanEvents     ScanEvent[]
+  reservations   EquipmentReservation[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -246,6 +273,29 @@ model ScanPhoto {
   scanEvent   ScanEvent @relation(fields: [scanEventId], references: [id], onDelete: Cascade)
 }
 
+// A forward booking of an asset to a job over a date range — distinct from
+// Equipment.currentJobId, which is custody (where it physically is right
+// now, set by scan events). A reservation is a plan; custody is a fact.
+// Checked the same way crew double-booking is checked (see findOverlaps in
+// lib/domain/scheduling.ts): two reservations for the same asset over an
+// overlapping window are a conflict, via the parallel findEquipmentConflicts
+// in lib/domain/equipment.ts.
+model EquipmentReservation {
+  id          String    @id @default(cuid())
+  equipmentId String
+  jobId       String
+  start       DateTime
+  end         DateTime
+
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+
+  @@index([equipmentId])
+  @@index([jobId])
+}
+
 // ---------------------------------------------------------------------------
 // Weather
 // ---------------------------------------------------------------------------
@@ -266,4 +316,115 @@ model WeatherCache {
   job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@unique([jobId, layer])
+}
+
+// ---------------------------------------------------------------------------
+// Permits, inspections, and field records
+// ---------------------------------------------------------------------------
+
+// A permit is the legal gate on whether work can proceed at all — more
+// fundamental than crew or equipment readiness, since a failed inspection
+// stops a job regardless of who's on site or what's on the lot. Feeds its
+// own readiness component (see permitsStatusFrom in lib/domain/readiness.ts)
+// rather than folding into "compliance," which is about people and assets —
+// a permit is about the structure, a different kind of thing.
+model Permit {
+  id               String       @id @default(cuid())
+  jobId            String
+  permitType       String
+  permitNumber     String?
+  issuingAuthority String
+  status           String       @default("APPLIED")
+  appliedDate      DateTime
+  issuedDate       DateTime?
+  expiryDate       DateTime?
+
+  job              Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  inspections      Inspection[]
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([jobId])
+}
+
+// One row per required inspection on a permit's sequence (footing, framing,
+// rough-ins, final...). Kept deliberately simple for this first pass, the
+// same way MaintenancePlan is: status is updated in place as the inspector's
+// visit outcome changes, rather than a full re-inspection history. That's
+// the same category of simplification as the equipment-usage-logging gap in
+// the README — a real next step once there's a need for a full visit-by-
+// visit record rather than current status.
+model Inspection {
+  id             String    @id @default(cuid())
+  permitId       String
+  inspectionType String
+  sequence       Int
+  status         String    @default("NOT_SCHEDULED")
+  scheduledDate  DateTime?
+  completedDate  DateTime?
+  inspectorNotes String?
+
+  permit         Permit    @relation(fields: [permitId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([permitId])
+}
+
+// One entry per job per day — actual weather, crew on site, work performed,
+// delays. Standard GC documentation (the kind that matters in a dispute or a
+// warranty claim, not just a nice-to-have), and the natural place actual
+// conditions get recorded alongside the forecast/outlook WeatherPanel shows.
+// Informational only — it doesn't feed readiness, the same way scan history
+// documents what happened without itself gating anything.
+model DailyLog {
+  id             String   @id @default(cuid())
+  jobId          String
+  logDate        DateTime
+  weatherSummary String?
+  crewCount      Int
+  workPerformed  String
+  delaysNotes    String?
+  submittedBy    String?
+
+  job              Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  submittedByWorker Worker? @relation(fields: [submittedBy], references: [id])
+
+  createdAt      DateTime @default(now())
+
+  @@unique([jobId, logDate])
+  @@index([jobId])
+}
+
+// A toolbox talk / safety briefing held on a job — topic, who ran it, who
+// was there. Documentation of safety culture, not a compliance gate on its
+// own (a missed toolbox talk doesn't block a job the way a failed inspection
+// does), so like DailyLog it's informational and doesn't feed readiness.
+model SafetyMeeting {
+  id          String                  @id @default(cuid())
+  jobId       String
+  meetingDate DateTime
+  topic       String
+  conductedBy String
+
+  job               Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  conductedByWorker Worker                  @relation(fields: [conductedBy], references: [id])
+  attendees         SafetyMeetingAttendee[]
+
+  createdAt   DateTime                @default(now())
+
+  @@index([jobId])
+}
+
+model SafetyMeetingAttendee {
+  id              String        @id @default(cuid())
+  safetyMeetingId String
+  workerId        String
+
+  safetyMeeting   SafetyMeeting @relation(fields: [safetyMeetingId], references: [id], onDelete: Cascade)
+  worker          Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([safetyMeetingId, workerId])
 }

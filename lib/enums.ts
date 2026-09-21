@@ -82,3 +82,41 @@ export const WeatherLayer = {
   OUTLOOK: 'OUTLOOK',
 } as const;
 export type WeatherLayer = (typeof WeatherLayer)[keyof typeof WeatherLayer];
+
+export const PermitType = {
+  BUILDING: 'BUILDING',
+  ELECTRICAL: 'ELECTRICAL',
+  PLUMBING: 'PLUMBING',
+  MECHANICAL: 'MECHANICAL',
+  SEPTIC: 'SEPTIC',
+  GRADING: 'GRADING',
+} as const;
+export type PermitType = (typeof PermitType)[keyof typeof PermitType];
+
+export const PermitStatus = {
+  APPLIED: 'APPLIED',
+  ISSUED: 'ISSUED',
+  FINALED: 'FINALED',
+  EXPIRED: 'EXPIRED',
+} as const;
+export type PermitStatus = (typeof PermitStatus)[keyof typeof PermitStatus];
+
+export const InspectionType = {
+  FOOTING: 'FOOTING',
+  FOUNDATION: 'FOUNDATION',
+  FRAMING: 'FRAMING',
+  ROUGH_IN_ELECTRICAL: 'ROUGH_IN_ELECTRICAL',
+  ROUGH_IN_PLUMBING: 'ROUGH_IN_PLUMBING',
+  ROUGH_IN_MECHANICAL: 'ROUGH_IN_MECHANICAL',
+  INSULATION: 'INSULATION',
+  FINAL: 'FINAL',
+} as const;
+export type InspectionType = (typeof InspectionType)[keyof typeof InspectionType];
+
+export const InspectionStatus = {
+  NOT_SCHEDULED: 'NOT_SCHEDULED',
+  SCHEDULED: 'SCHEDULED',
+  PASSED: 'PASSED',
+  FAILED: 'FAILED',
+} as const;
+export type InspectionStatus = (typeof InspectionStatus)[keyof typeof InspectionStatus];
