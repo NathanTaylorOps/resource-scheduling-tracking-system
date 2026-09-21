@@ -45,6 +45,13 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
           {worker.trade} · {worker.employmentType === 'DIRECT_EMPLOYEE' ? 'Direct employee' : 'Subcontractor'} · with
           Coastwood since {worker.hireDate.toLocaleDateString()}
         </p>
+        {(worker.phone || worker.email) && (
+          <p className="mt-1 text-sm text-zinc-500">
+            {worker.phone}
+            {worker.phone && worker.email && ' · '}
+            {worker.email}
+          </p>
+        )}
       </div>
 
       <div className="card w-fit">

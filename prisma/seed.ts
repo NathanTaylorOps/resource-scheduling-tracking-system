@@ -204,22 +204,30 @@ async function main() {
   // but shows up in the field documentation below the way an owner actually
   // does — periodic site visits, not day-to-day staffing.
   // ---------------------------------------------------------------------
+  // Phone uses the 425 area code shared by every job site above (Snohomish
+  // County / Eastside) with the 555-01XX exchange NANPA reserves for
+  // fictional use, so it reads as a real regional number without being one.
+  // Email is only seeded for the office-adjacent roles (ownership, the
+  // superintendent, the two PMs) — realistic for a GC this size, where field
+  // trade crew get called or texted, not emailed, day to day — on the
+  // reserved-for-documentation .example domain (RFC 2606), so it can't
+  // collide with a real one either.
   const workers = await Promise.all([
-    prisma.worker.create({ data: { name: 'Walt Ferreira', trade: 'Owner / Principal', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(1400) } }),
-    prisma.worker.create({ data: { name: 'Dale Petrenko', trade: 'Site Superintendent', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(900) } }),
-    prisma.worker.create({ data: { name: 'Marcus Ibe', trade: 'Carpenter Foreman', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(720) } }),
-    prisma.worker.create({ data: { name: 'Priya Nandan', trade: 'Carpenter', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(500) } }),
-    prisma.worker.create({ data: { name: 'Ollie Fenwick', trade: 'Carpenter', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(310) } }),
-    prisma.worker.create({ data: { name: 'Teo Salvador', trade: 'Electrician', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(600), subcontractorId: salvadorElectric.id } }),
-    prisma.worker.create({ data: { name: 'Renata Cho', trade: 'Plumber', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(480), subcontractorId: choPlumbing.id } }),
-    prisma.worker.create({ data: { name: 'Big Sam Okonkwo', trade: 'Heavy Equipment Operator', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(650) } }),
-    prisma.worker.create({ data: { name: 'Jules Whitfield', trade: 'Laborer', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(150) } }),
+    prisma.worker.create({ data: { name: 'Walt Ferreira', trade: 'Owner / Principal', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(1400), phone: '425-555-0101', email: 'walt.ferreira@coastwoodbuilders.example' } }),
+    prisma.worker.create({ data: { name: 'Dale Petrenko', trade: 'Site Superintendent', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(900), phone: '425-555-0102', email: 'dale.petrenko@coastwoodbuilders.example' } }),
+    prisma.worker.create({ data: { name: 'Marcus Ibe', trade: 'Carpenter Foreman', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(720), phone: '425-555-0103' } }),
+    prisma.worker.create({ data: { name: 'Priya Nandan', trade: 'Carpenter', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(500), phone: '425-555-0104' } }),
+    prisma.worker.create({ data: { name: 'Ollie Fenwick', trade: 'Carpenter', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(310), phone: '425-555-0105' } }),
+    prisma.worker.create({ data: { name: 'Teo Salvador', trade: 'Electrician', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(600), subcontractorId: salvadorElectric.id, phone: '425-555-0106' } }),
+    prisma.worker.create({ data: { name: 'Renata Cho', trade: 'Plumber', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(480), subcontractorId: choPlumbing.id, phone: '425-555-0107' } }),
+    prisma.worker.create({ data: { name: 'Big Sam Okonkwo', trade: 'Heavy Equipment Operator', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(650), phone: '425-555-0108' } }),
+    prisma.worker.create({ data: { name: 'Jules Whitfield', trade: 'Laborer', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(150), phone: '425-555-0109' } }),
     // Project managers run multiple sites at once rather than living on one
     // job the way a superintendent does — that's why their vehicles, phones,
     // and laptops below are field-assigned equipment (tracked by custody,
     // currentWorkerId) rather than job-site equipment tied to one currentJobId.
-    prisma.worker.create({ data: { name: 'Renee Castellanos', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(560) } }),
-    prisma.worker.create({ data: { name: 'Kenji Osei', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(410) } }),
+    prisma.worker.create({ data: { name: 'Renee Castellanos', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(560), phone: '425-555-0110', email: 'renee.castellanos@coastwoodbuilders.example' } }),
+    prisma.worker.create({ data: { name: 'Kenji Osei', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(410), phone: '425-555-0111', email: 'kenji.osei@coastwoodbuilders.example' } }),
   ]);
   const [walt, dale, marcus, priya, ollie, teo, renata, bigSam, jules, renee, kenji] = workers;
 
@@ -641,7 +649,8 @@ async function main() {
     data: [
       // Excavator: 500-hour service interval, 50-hour tolerance. Last
       // serviced at the 1000-hour mark, due again at 1500 — currently at
-      // 1180, comfortably inside the window (due_soon territory).
+      // 1180, with 320 hours still remaining, well clear of due-soon and
+      // reading as a plain ok.
       { equipmentId: excavator.id, complianceType: ComplianceType.INSPECTION, counterType: CounterType.RUN_HOURS, intervalValue: 500, toleranceValue: 50, hardLimit: false, dueValue: 1500, lastCompletedAt: daysAgo(220), lastCompletedValue: 1000 },
       // Generator: hybrid-tracked, but modeled here on run-hours; due at
       // 350 hours and currently at 340 — due soon.
