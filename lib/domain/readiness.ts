@@ -1,9 +1,9 @@
 /**
  * Composite job readiness score.
  *
- * Deliberately not a single opaque number. Each job carries four component
- * statuses — crew, equipment, compliance, weather — and the overall
- * readiness is the worst of the four, shown alongside the breakdown rather
+ * Deliberately not a single opaque number. Each job carries five component
+ * statuses — crew, equipment, compliance, weather, permits — and the overall
+ * readiness is the worst of the five, shown alongside the breakdown rather
  * than in place of it. A PM should be able to see at a glance *why* a job
  * isn't ready, not just that it isn't.
  */
@@ -15,6 +15,7 @@ export interface ReadinessInputs {
   equipment: ComponentStatus;
   compliance: ComponentStatus;
   weather: ComponentStatus;
+  permits: ComponentStatus;
 }
 
 export interface ReadinessResult extends ReadinessInputs {
@@ -24,7 +25,7 @@ export interface ReadinessResult extends ReadinessInputs {
 const SEVERITY: Record<ComponentStatus, number> = { ok: 0, warning: 1, blocked: 2 };
 
 export function computeReadiness(inputs: ReadinessInputs): ReadinessResult {
-  const overall = ([inputs.crew, inputs.equipment, inputs.compliance, inputs.weather] as const)
+  const overall = ([inputs.crew, inputs.equipment, inputs.compliance, inputs.weather, inputs.permits] as const)
     .reduce<ComponentStatus>((worst, current) => (SEVERITY[current] > SEVERITY[worst] ? current : worst), 'ok');
 
   return { ...inputs, overall };
@@ -67,5 +68,22 @@ export function weatherStatusFrom(params: {
 }): ComponentStatus {
   if (params.hasSevereRiskInForecastWindow) return 'blocked';
   if (params.hasModerateRiskInForecastWindow) return 'warning';
+  return 'ok';
+}
+
+/**
+ * Derives a permits component status from permit and inspection standing.
+ * A failed inspection or an expired permit blocks the job outright — work
+ * can't legally proceed either way, regardless of who's on site or what
+ * equipment is there. An inspection coming up soon is a heads-up, not a
+ * blocker.
+ */
+export function permitsStatusFrom(params: {
+  hasFailedInspection: boolean;
+  hasExpiredPermit: boolean;
+  hasInspectionDueSoon: boolean;
+}): ComponentStatus {
+  if (params.hasFailedInspection || params.hasExpiredPermit) return 'blocked';
+  if (params.hasInspectionDueSoon) return 'warning';
   return 'ok';
 }

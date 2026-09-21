@@ -18,7 +18,8 @@
  */
 
 import { prisma } from '@/lib/db';
-import { findOverlaps, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
+import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
+import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import type { MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
@@ -28,6 +29,7 @@ import {
   equipmentStatusFrom,
   complianceStatusFrom,
   weatherStatusFrom,
+  permitsStatusFrom,
   type ReadinessResult,
 } from '@/lib/domain/readiness';
 import { checkWeatherSensitivity, type NwsForecastResult } from '@/lib/weather/nws';
@@ -110,15 +112,35 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   const hasOverlapConflict = conflicts.some(
     (c) => c.first.jobId === jobId || c.second.jobId === jobId,
   );
-  const crew = crewStatusFrom({ hasOverlapConflict, hasUnfilledRole: false });
 
-  // --- Equipment: any asset currently assigned to this job down for service? ---
+  const roleRequirements = await prisma.jobRoleRequirement.findMany({ where: { jobId } });
+  const hasUnfilledRole = findUnfilledRoles(
+    roleRequirements.map((r) => ({ id: r.id, roleOrTrade: r.roleOrTrade, requiredCount: r.requiredCount })),
+    job.assignments.map((a) => ({ roleOnJob: a.roleOnJob })),
+  ).length > 0;
+
+  const crew = crewStatusFrom({ hasOverlapConflict, hasUnfilledRole });
+
+  // --- Equipment: any asset currently assigned to this job down for service,
+  // or reserved to this job over a window that overlaps another job's
+  // reservation for the same asset? ---
   const equipment = await prisma.equipment.findMany({
     where: { currentJobId: jobId },
     include: { compliance: true, lifeCounters: true },
   });
   const hasAssetDownForService = equipment.some((e) => e.status === 'DOWN_FOR_SERVICE');
-  const equipmentComponent = equipmentStatusFrom({ hasAssetDownForService, hasAssetConflict: false });
+
+  const reservationsForJob = await prisma.equipmentReservation.findMany({ where: { jobId } });
+  const reservedEquipmentIds = [...new Set(reservationsForJob.map((r) => r.equipmentId))];
+  const allReservationsForThoseAssets = reservedEquipmentIds.length
+    ? await prisma.equipmentReservation.findMany({ where: { equipmentId: { in: reservedEquipmentIds } } })
+    : [];
+  const equipmentConflicts = findEquipmentConflicts(
+    allReservationsForThoseAssets.map((r) => ({ id: r.id, equipmentId: r.equipmentId, jobId: r.jobId, start: r.start, end: r.end })),
+  );
+  const hasAssetConflict = equipmentConflicts.some((c) => c.first.jobId === jobId || c.second.jobId === jobId);
+
+  const equipmentComponent = equipmentStatusFrom({ hasAssetDownForService, hasAssetConflict });
 
   // --- Compliance: worker certifications and equipment compliance items ---
   const now = new Date();
@@ -171,5 +193,21 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
     });
   }
 
-  return computeReadiness({ crew, equipment: equipmentComponent, compliance, weather });
+  // --- Permits: any failed inspection or expired permit on this job? ---
+  const permits = await prisma.permit.findMany({ where: { jobId }, include: { inspections: true } });
+  const hasExpiredPermit = permits.some(
+    (p) => p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime()),
+  );
+  const allInspections = permits.flatMap((p) => p.inspections);
+  const hasFailedInspection = allInspections.some((i) => i.status === 'FAILED');
+  const hasInspectionDueSoon = allInspections.some(
+    (i) =>
+      i.status === 'SCHEDULED' &&
+      i.scheduledDate !== null &&
+      i.scheduledDate.getTime() >= now.getTime() &&
+      i.scheduledDate.getTime() - now.getTime() <= DUE_SOON_WINDOW_DAYS * DAY_MS,
+  );
+  const permitsComponent = permitsStatusFrom({ hasFailedInspection, hasExpiredPermit, hasInspectionDueSoon });
+
+  return computeReadiness({ crew, equipment: equipmentComponent, compliance, weather, permits: permitsComponent });
 }

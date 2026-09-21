@@ -94,3 +94,33 @@ export function calculateUtilization(input: UtilizationInput): number {
 
   return Math.min(1, engagedHours / availableHours);
 }
+
+export interface RoleRequirement {
+  id: string;
+  roleOrTrade: string;
+  requiredCount: number;
+}
+
+export interface RoleAssignment {
+  roleOnJob: string;
+}
+
+/**
+ * Requirements a job's current assignments don't satisfy — matched by exact
+ * role/trade string, the same way a real staffing plan names a role rather
+ * than fuzzy-matching a trade category. Returns the unmet requirements
+ * themselves rather than a bare boolean, so the caller can name what's
+ * missing on the page, the same way a scheduling conflict names who's
+ * double-booked rather than just flagging that one exists.
+ */
+export function findUnfilledRoles(
+  requirements: RoleRequirement[],
+  assignments: RoleAssignment[],
+): RoleRequirement[] {
+  const countByRole = new Map<string, number>();
+  for (const assignment of assignments) {
+    countByRole.set(assignment.roleOnJob, (countByRole.get(assignment.roleOnJob) ?? 0) + 1);
+  }
+
+  return requirements.filter((requirement) => (countByRole.get(requirement.roleOrTrade) ?? 0) < requirement.requiredCount);
+}

@@ -10,11 +10,12 @@
 
 import { getComplianceStatus, recordCompletion, earliestDue } from '../compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate } from '../forecasting';
-import { findOverlaps, calculateUtilization } from '../scheduling';
+import { findOverlaps, calculateUtilization, findUnfilledRoles } from '../scheduling';
 import { getCertificationStatus, canAssignWorker } from '../certifications';
 import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePlan } from '../maintenance';
-import { computeReadiness } from '../readiness';
+import { computeReadiness, permitsStatusFrom } from '../readiness';
 import { custodyUpdateFor } from '../custody';
+import { findEquipmentConflicts } from '../equipment';
 
 let passed = 0;
 let failed = 0;
@@ -91,7 +92,7 @@ console.log('\nforecasting.ts — utilization-based next-due projection');
   assertEqual('hybrid trigger picks the usage projection when it comes first', hybridDue.toISOString().slice(0, 10), '2026-10-20');
 }
 
-console.log('\nscheduling.ts — overlap detection and utilization');
+console.log('\nscheduling.ts — overlap detection, utilization, and role coverage');
 {
   const conflicts = findOverlaps([
     { id: 'a1', workerId: 'w1', jobId: 'j1', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-22T16:00') },
@@ -110,6 +111,46 @@ console.log('\nscheduling.ts — overlap detection and utilization');
     availableHoursPerDay: 8,
   });
   assertEqual('a full 8-hour day of assignment against an 8-hour day is 100% utilized', utilization, 1);
+
+  const roleCoverage = findUnfilledRoles(
+    [
+      { id: 'r1', roleOrTrade: 'Licensed Electrician', requiredCount: 1 },
+      { id: 'r2', roleOrTrade: 'Carpenter', requiredCount: 2 },
+    ],
+    [{ roleOnJob: 'Carpenter' }, { roleOnJob: 'Carpenter' }],
+  );
+  assertEqual('a role with zero assignments is unfilled', roleCoverage.map((r) => r.id), ['r1']);
+  assertEqual('a role staffed to its required count is not returned', roleCoverage.some((r) => r.roleOrTrade === 'Carpenter'), false);
+
+  const partialCoverage = findUnfilledRoles(
+    [{ id: 'r3', roleOrTrade: 'Carpenter', requiredCount: 2 }],
+    [{ roleOnJob: 'Carpenter' }],
+  );
+  assertEqual('a role short of its required count is still unfilled, even with one assignment on it', partialCoverage.length, 1);
+
+  const fuzzyMismatch = findUnfilledRoles(
+    [{ id: 'r4', roleOrTrade: 'Electrician', requiredCount: 1 }],
+    [{ roleOnJob: 'Licensed Electrician' }],
+  );
+  assertEqual('roleOnJob is matched by exact string, not fuzzy trade matching', fuzzyMismatch.length, 1);
+}
+
+console.log('\nequipment.ts — cross-job reservation conflicts');
+{
+  const equipmentConflicts = findEquipmentConflicts([
+    { id: 'res1', equipmentId: 'eq-skidsteer', jobId: 'job-cedar-hollow', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-26T17:00') },
+    { id: 'res2', equipmentId: 'eq-skidsteer', jobId: 'job-orchard-ridge', start: new Date('2026-09-25T08:00'), end: new Date('2026-09-29T17:00') },
+    { id: 'res3', equipmentId: 'eq-excavator', jobId: 'job-cedar-hollow', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-26T17:00') },
+  ]);
+  assertEqual('overlapping reservations for the same asset are flagged', equipmentConflicts.length, 1);
+  assertEqual('the conflict is keyed to the asset that is double-booked', equipmentConflicts[0]?.equipmentId, 'eq-skidsteer');
+  assertEqual('a different asset reserved over the same window is not a conflict', equipmentConflicts.some((c) => c.equipmentId === 'eq-excavator'), false);
+
+  const backToBack = findEquipmentConflicts([
+    { id: 'res4', equipmentId: 'eq-generator', jobId: 'job-cedar-hollow', start: new Date('2026-09-22T08:00'), end: new Date('2026-09-24T17:00') },
+    { id: 'res5', equipmentId: 'eq-generator', jobId: 'job-lakeview', start: new Date('2026-09-24T17:00'), end: new Date('2026-09-26T17:00') },
+  ]);
+  assertEqual('back-to-back reservations that just touch, not overlap, are not a conflict', backToBack.length, 0);
 }
 
 console.log('\ncertifications.ts — expiry status and assignment gating');
@@ -153,11 +194,35 @@ console.log('\nmaintenance.ts — nested PM hierarchy');
 
 console.log('\nreadiness.ts — composite decomposable score');
 {
-  const readiness = computeReadiness({ crew: 'ok', equipment: 'warning', compliance: 'ok', weather: 'ok' });
-  assertEqual('overall status is the worst of the four components', readiness.overall, 'warning');
+  const readiness = computeReadiness({ crew: 'ok', equipment: 'warning', compliance: 'ok', weather: 'ok', permits: 'ok' });
+  assertEqual('overall status is the worst of the five components', readiness.overall, 'warning');
 
-  const blocked = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'blocked', weather: 'warning' });
+  const blocked = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'blocked', weather: 'warning', permits: 'ok' });
   assertEqual('a single blocked component blocks the whole job', blocked.overall, 'blocked');
+
+  const permitBlocked = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'ok', weather: 'ok', permits: 'blocked' });
+  assertEqual('a blocked permits component blocks the job exactly like any other component', permitBlocked.overall, 'blocked');
+
+  assertEqual(
+    'a failed inspection blocks regardless of permit or other-inspection standing',
+    permitsStatusFrom({ hasFailedInspection: true, hasExpiredPermit: false, hasInspectionDueSoon: false }),
+    'blocked',
+  );
+  assertEqual(
+    'an expired permit blocks even with no failed inspection',
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: true, hasInspectionDueSoon: false }),
+    'blocked',
+  );
+  assertEqual(
+    'an inspection due soon warns, short of blocking',
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasInspectionDueSoon: true }),
+    'warning',
+  );
+  assertEqual(
+    'no issues reads as ok',
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasInspectionDueSoon: false }),
+    'ok',
+  );
 }
 
 console.log('\ncustody.ts — what a scan action does to custody and status');
