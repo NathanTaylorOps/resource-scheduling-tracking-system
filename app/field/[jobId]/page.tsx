@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { computeJobReadiness } from '@/lib/readiness-service';
-import { getCertificationStatus } from '@/lib/domain/certifications';
-import { StatusBadge } from '@/components/StatusBadge';
+import { computeJobReadiness, DUE_SOON_WINDOW_DAYS, DAY_MS } from '@/lib/readiness-service';
+import { getCertificationStatus, summarizeCertificationStatuses } from '@/lib/domain/certifications';
+import { permitsStatusFrom } from '@/lib/domain/readiness';
+import { isPastCalendarDate } from '@/lib/domain/dates';
+import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import { DailyLogForm } from '@/components/DailyLogForm';
 import { ToolboxTalkForm } from '@/components/ToolboxTalkForm';
 import { ChevronLeft, CircleCheck, TriangleAlert, CircleX } from 'lucide-react';
@@ -54,7 +56,7 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
           <h1 className="text-2xl font-bold tracking-tight">{job.name}</h1>
           <p className="text-sm text-zinc-500">{job.address}</p>
         </div>
-        <StatusBadge status={readiness.overall} label={readiness.overall === 'ok' ? 'Ready' : readiness.overall === 'warning' ? 'Attention' : 'Blocked'} />
+        <StatusBadge status={readiness.overall} label={OVERALL_READINESS_LABEL[readiness.overall]} />
       </div>
 
       <div className="card">
@@ -64,8 +66,12 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
             const statuses = a.worker.certifications.map(
               (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status,
             );
-            const hasExpired = statuses.some((s) => s === 'expired');
-            const hasReview = statuses.some((s) => s === 'expiring_soon' || s === 'aging' || s === 'renewal_pending');
+            // Same shared bucketing the job detail page uses (see
+            // lib/domain/certifications.ts) — just collapsed to booleans
+            // here since this view shows one icon, not a count.
+            const { expiredCount, reviewCount } = summarizeCertificationStatuses(statuses);
+            const hasExpired = expiredCount > 0;
+            const hasReview = reviewCount > 0;
             const Icon = hasExpired ? CircleX : hasReview ? TriangleAlert : CircleCheck;
             const iconClass = hasExpired ? 'text-status-blocked' : hasReview ? 'text-status-warning' : 'text-status-ok';
             return (
@@ -105,15 +111,35 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
         <h2 className="mb-3 font-semibold">Permits</h2>
         <ul className="divide-y divide-outdoor-border">
           {permits.map((p) => {
-            const isExpired = p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime());
+            // Same three inputs, and the same permitsStatusFrom function,
+            // that the overall readiness banner above is built from — so
+            // this row can never show "ok" for a permit that's the reason
+            // the banner at the top of this same screen reads "Attention."
+            // (An earlier version of this page recomputed isExpired/
+            // hasFailedInspection inline and left out the due-soon
+            // inspection check entirely, which is exactly how that
+            // mismatch happened.)
+            const isExpired = p.status === 'EXPIRED' || (p.expiryDate !== null && isPastCalendarDate(p.expiryDate, now));
             const hasFailedInspection = p.inspections.some((i) => i.status === 'FAILED');
+            const hasInspectionDueSoon = p.inspections.some(
+              (i) =>
+                i.status === 'SCHEDULED' &&
+                i.scheduledDate !== null &&
+                i.scheduledDate.getTime() >= now.getTime() &&
+                i.scheduledDate.getTime() - now.getTime() <= DUE_SOON_WINDOW_DAYS * DAY_MS,
+            );
+            const status = permitsStatusFrom({ hasFailedInspection, hasExpiredPermit: isExpired, hasInspectionDueSoon });
+            const label = isExpired
+              ? 'Expired'
+              : hasFailedInspection
+                ? 'Failed inspection'
+                : hasInspectionDueSoon
+                  ? 'Inspection due soon'
+                  : p.status.charAt(0) + p.status.slice(1).toLowerCase();
             return (
               <li key={p.id} className="flex items-center justify-between py-2.5">
                 <span className="font-medium">{p.permitType.charAt(0) + p.permitType.slice(1).toLowerCase()}</span>
-                <StatusBadge
-                  status={isExpired || hasFailedInspection ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
-                  label={isExpired ? 'Expired' : hasFailedInspection ? 'Failed inspection' : p.status.charAt(0) + p.status.slice(1).toLowerCase()}
-                />
+                <StatusBadge status={status} label={label} />
               </li>
             );
           })}

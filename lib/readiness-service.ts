@@ -30,11 +30,17 @@ import {
   weatherStatusFrom,
   permitsStatusFrom,
   type ReadinessResult,
+  type ComponentStatus,
 } from '@/lib/domain/readiness';
 import { checkWeatherSensitivity, type NwsForecastResult } from '@/lib/weather/nws';
+import { isPastCalendarDate } from '@/lib/domain/dates';
 
-const DUE_SOON_WINDOW_DAYS = 14;
-const DAY_MS = 24 * 60 * 60 * 1000;
+// Exported so any screen that needs to reproduce a piece of this file's
+// readiness math against a subset of the same data (e.g. the mobile field
+// view's per-permit row) uses the exact same lookahead window rather than
+// a second, hand-typed "14" that could quietly drift from this one.
+export const DUE_SOON_WINDOW_DAYS = 14;
+export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * How close to its nominal due point a compliance or maintenance item has to
@@ -118,24 +124,79 @@ export function toDomainPlan(plan: {
 }
 
 export async function computeJobReadiness(jobId: string): Promise<ReadinessResult> {
-  const job = await prisma.job.findUniqueOrThrow({
-    where: { id: jobId },
-    include: {
-      assignments: {
-        include: {
-          worker: {
-            include: { certifications: true, subcontractor: { include: { coiRecords: true } } },
+  const now = new Date();
+
+  // The queries below split into two waves rather than running one after
+  // another: everything in this first Promise.all needs only `jobId` (or
+  // nothing beyond it) to run, so there's no reason for e.g. the permits
+  // query to wait on the equipment query to finish first. This is the
+  // fix for what was previously ~8 fully sequential round trips per job —
+  // it doesn't eliminate the N+1 shape across many jobs (that would need a
+  // real batch-query rewrite of this function), but for a single job it
+  // turns 8 serial round trips into 2 concurrent waves, which is most of
+  // the win for a fraction of the risk of restructuring how every caller
+  // fetches readiness.
+  const [job, roleRequirements, equipment, reservationsForJob, forecastCache, permits] = await Promise.all([
+    prisma.job.findUniqueOrThrow({
+      where: { id: jobId },
+      include: {
+        assignments: {
+          include: {
+            worker: {
+              include: { certifications: true, subcontractor: { include: { coiRecords: true } } },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.jobRoleRequirement.findMany({ where: { jobId } }),
+    // --- Equipment: any asset currently assigned to this job down for
+    // service, or reserved to this job over a window that overlaps another
+    // job's reservation for the same asset? ---
+    prisma.equipment.findMany({
+      where: { currentJobId: jobId },
+      include: { compliance: true, lifeCounters: true, maintenancePlans: true },
+    }),
+    prisma.equipmentReservation.findMany({ where: { jobId } }),
+    prisma.weatherCache.findUnique({ where: { jobId_layer: { jobId, layer: 'FORECAST' } } }),
+    prisma.permit.findMany({ where: { jobId }, include: { inspections: true } }),
+  ]);
 
   // --- Crew: any of this job's assigned workers double-booked elsewhere? ---
   const workerIds = [...new Set(job.assignments.map((a) => a.workerId))];
-  const allAssignmentsForCrew = workerIds.length
-    ? await prisma.assignment.findMany({ where: { workerId: { in: workerIds } } })
-    : [];
+  const reservedEquipmentIds = [...new Set(reservationsForJob.map((r) => r.equipmentId))];
+  // A reservation booked months out shouldn't be judged against today's
+  // incidental asset status — the asset has plenty of time to come back
+  // from an unrelated repair before the booking actually starts. Only a
+  // reservation that's already active or starting within the same
+  // due-soon lookahead used everywhere else in this file is close enough
+  // that "this asset is down for service right now" is actually relevant
+  // to it.
+  const imminentReservationEquipmentIds = [
+    ...new Set(
+      reservationsForJob
+        .filter(
+          (r) =>
+            r.start.getTime() <= now.getTime() + DUE_SOON_WINDOW_DAYS * DAY_MS &&
+            r.end.getTime() >= now.getTime(),
+        )
+        .map((r) => r.equipmentId),
+    ),
+  ];
+
+  const [allAssignmentsForCrew, allReservationsForThoseAssets, reservedButDownForService] = await Promise.all([
+    workerIds.length ? prisma.assignment.findMany({ where: { workerId: { in: workerIds } } }) : Promise.resolve([]),
+    reservedEquipmentIds.length
+      ? prisma.equipmentReservation.findMany({ where: { equipmentId: { in: reservedEquipmentIds } } })
+      : Promise.resolve([]),
+    imminentReservationEquipmentIds.length
+      ? prisma.equipment.findMany({
+          where: { id: { in: imminentReservationEquipmentIds }, status: 'DOWN_FOR_SERVICE' },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
   const overlapInput: OverlapAssignment[] = allAssignmentsForCrew.map((a) => ({
     id: a.id,
     workerId: a.workerId,
@@ -149,7 +210,6 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
     (c) => c.first.jobId === jobId || c.second.jobId === jobId,
   );
 
-  const roleRequirements = await prisma.jobRoleRequirement.findMany({ where: { jobId } });
   const hasUnfilledRole = findUnfilledRoles(
     roleRequirements.map((r) => ({ id: r.id, roleOrTrade: r.roleOrTrade, requiredCount: r.requiredCount })),
     job.assignments.map((a) => ({ roleOnJob: a.roleOnJob })),
@@ -157,20 +217,8 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
 
   const crew = crewStatusFrom({ hasOverlapConflict, hasUnfilledRole });
 
-  // --- Equipment: any asset currently assigned to this job down for service,
-  // or reserved to this job over a window that overlaps another job's
-  // reservation for the same asset? ---
-  const equipment = await prisma.equipment.findMany({
-    where: { currentJobId: jobId },
-    include: { compliance: true, lifeCounters: true, maintenancePlans: true },
-  });
   const hasAssetDownForService = equipment.some((e) => e.status === 'DOWN_FOR_SERVICE');
 
-  const reservationsForJob = await prisma.equipmentReservation.findMany({ where: { jobId } });
-  const reservedEquipmentIds = [...new Set(reservationsForJob.map((r) => r.equipmentId))];
-  const allReservationsForThoseAssets = reservedEquipmentIds.length
-    ? await prisma.equipmentReservation.findMany({ where: { equipmentId: { in: reservedEquipmentIds } } })
-    : [];
   const equipmentConflicts = findEquipmentConflicts(
     allReservationsForThoseAssets.map((r) => ({ id: r.id, equipmentId: r.equipmentId, jobId: r.jobId, start: r.start, end: r.end })),
   );
@@ -182,19 +230,12 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   // today, so it's a heads-up for whoever's tracking the booking, not a
   // block on today's readiness the way an asset that IS on site and broken
   // would be.
-  const reservedButDownForService = reservedEquipmentIds.length
-    ? await prisma.equipment.findMany({
-        where: { id: { in: reservedEquipmentIds }, status: 'DOWN_FOR_SERVICE' },
-        select: { id: true },
-      })
-    : [];
   const hasAssetConflict = hasReservationOverlapConflict || reservedButDownForService.length > 0;
 
   const equipmentComponent = equipmentStatusFrom({ hasAssetDownForService, hasAssetConflict });
 
   // --- Compliance: worker certifications, subcontractor entity-level
   // compliance (COI + license), and equipment compliance items ---
-  const now = new Date();
   let hasExpiredItem = false;
   let hasExpiringSoonItem = false;
 
@@ -271,13 +312,23 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   const compliance = complianceStatusFrom({ hasExpiredItem, hasExpiringSoonItem });
 
   // --- Weather: live forecast cache against the job's sensitivity tag ---
-  const forecastCache = await prisma.weatherCache.findUnique({
-    where: { jobId_layer: { jobId, layer: 'FORECAST' } },
-  });
-
-  let weather: ReturnType<typeof weatherStatusFrom> = 'ok';
-  if (forecastCache) {
-    const forecast = JSON.parse(forecastCache.dataJson) as NwsForecastResult;
+  // A job that doesn't care about weather at all reads as 'ok' regardless
+  // of whether a forecast has ever been fetched for it — there's nothing
+  // to be uncertain about. A job that DOES care but has no fresh forecast
+  // cached (never viewed, since the forecast refreshes on view rather than
+  // on a schedule — see WeatherPanel — or its cache has simply gone stale
+  // past staleAfter) reads as 'unknown', not 'ok': this is the fix for
+  // weather readiness previously defaulting to a false "ok" for a job
+  // nobody had opened yet, on the dashboard and map views that compute
+  // readiness without anyone having opened the job first.
+  const hasFreshForecast = forecastCache !== null && forecastCache.staleAfter.getTime() > now.getTime();
+  let weather: ComponentStatus;
+  if (job.weatherSensitivity === 'INSENSITIVE') {
+    weather = 'ok';
+  } else if (!hasFreshForecast) {
+    weather = 'unknown';
+  } else {
+    const forecast = JSON.parse(forecastCache!.dataJson) as NwsForecastResult;
     const check = checkWeatherSensitivity(forecast, job.weatherSensitivity);
     weather = weatherStatusFrom({
       hasSevereRiskInForecastWindow: check.atRisk && job.weatherSensitivity === 'SENSITIVE',
@@ -286,9 +337,12 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   }
 
   // --- Permits: any failed inspection or expired permit on this job? ---
-  const permits = await prisma.permit.findMany({ where: { jobId }, include: { inspections: true } });
+  // Calendar-date comparison (see lib/domain/dates.ts), not exact
+  // milliseconds — a permit good "through" its expiryDate shouldn't read as
+  // expired hours before that date is actually over in the timezone anyone
+  // reading the printed date is standing in.
   const hasExpiredPermit = permits.some(
-    (p) => p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime()),
+    (p) => p.status === 'EXPIRED' || (p.expiryDate !== null && isPastCalendarDate(p.expiryDate, now)),
   );
   const allInspections = permits.flatMap((p) => p.inspections);
   const hasFailedInspection = allInspections.some((i) => i.status === 'FAILED');

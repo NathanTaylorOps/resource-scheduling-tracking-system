@@ -24,6 +24,8 @@
  *     binary.
  */
 
+import { calendarDaysUntil } from './dates';
+
 export type CertificationStatus = 'valid' | 'expiring_soon' | 'expired' | 'aging' | 'renewal_pending';
 
 // renewalPattern is a plain string here, not a literal union — the same
@@ -76,9 +78,11 @@ export function getCertificationStatus(
   renewalPattern: string = 'HARD_EXPIRY',
   renewalFiledDate?: Date | null,
 ): CertificationStatusResult {
-  const daysUntilExpiry = Math.floor(
-    (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-  );
+  // Calendar-date comparison, not exact-millisecond — see lib/domain/dates.ts.
+  // A card good "through" its expiryDate should still be current for the
+  // entire UTC day that date names, not go dark at UTC midnight (which can
+  // be mid-afternoon the day before in US timezones).
+  const daysUntilExpiry = calendarDaysUntil(expiryDate, now);
 
   if (daysUntilExpiry < 0) {
     if (renewalPattern === 'INFORMAL_RECENCY') {
@@ -110,6 +114,32 @@ export function getCertificationStatus(
     daysUntilExpiry,
     crossedThreshold,
   };
+}
+
+/**
+ * Buckets a worker's raw per-certification statuses into the two severities
+ * every screen that shows a crew member's cert standing actually cares
+ * about: a true 'expired' credential (the one status that blocks an
+ * assignment) versus everything that's merely worth a look
+ * ('expiring_soon', 'aging', 'renewal_pending'). Centralized so which
+ * statuses land in which bucket is decided once — previously the job
+ * detail page and the mobile field view each re-derived this split inline,
+ * and had already drifted: one counted all four "not fully valid"
+ * statuses as a single undifferentiated bucket, the other kept expired
+ * separate. A change to what counts as "needs review" now only has to be
+ * made here.
+ */
+export function summarizeCertificationStatuses(statuses: CertificationStatus[]): {
+  expiredCount: number;
+  reviewCount: number;
+} {
+  let expiredCount = 0;
+  let reviewCount = 0;
+  for (const status of statuses) {
+    if (status === 'expired') expiredCount++;
+    else if (status === 'expiring_soon' || status === 'aging' || status === 'renewal_pending') reviewCount++;
+  }
+  return { expiredCount, reviewCount };
 }
 
 export interface AssignmentEligibility {
