@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { resolveCounterValue, resolveDueSoonWindow } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { StatusBadge } from '@/components/StatusBadge';
+import { CreateEquipmentForm } from '@/components/CreateEquipmentForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,12 +46,13 @@ export default async function EquipmentPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Equipment</h1>
-        <Link href="/equipment/scan" className="field-btn bg-zinc-900 text-white hover:bg-zinc-800">
+        <Link href="/equipment/scan" className="field-btn inline-flex w-fit bg-zinc-900 text-white hover:bg-zinc-800">
           Scan QR
         </Link>
       </div>
+      <CreateEquipmentForm />
 
       {/* Below sm: a table with five columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-
