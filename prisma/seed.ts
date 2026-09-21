@@ -769,7 +769,13 @@ async function main() {
       { jobId: cedarHollow.id, roleOrTrade: 'Carpenter Foreman', requiredCount: 1 },
       { jobId: cedarHollow.id, roleOrTrade: 'Carpenter', requiredCount: 2 },
       { jobId: cedarHollow.id, roleOrTrade: 'Licensed Electrician', requiredCount: 1 }, // unfilled — no electrician assigned to this job yet
-      { jobId: harborPoint.id, roleOrTrade: 'Electrician', requiredCount: 1 },
+      // requiredCertTypes set here so the certification hard-stop has
+      // somewhere to actually run: Teo Salvador holds exactly this cert
+      // (see his WorkerCertification above) and is already assigned here as
+      // 'Electrician', so this requirement is satisfied as seeded — try
+      // assigning a second worker who DOESN'T hold it to this same role on
+      // Harbor Point to see the 409 fire.
+      { jobId: harborPoint.id, roleOrTrade: 'Electrician', requiredCount: 1, requiredCertTypes: 'Master Electrician License' },
       { jobId: harborPoint.id, roleOrTrade: 'Project Manager', requiredCount: 1 },
       { jobId: orchardRidge.id, roleOrTrade: 'Site Superintendent', requiredCount: 1 }, // unfilled — job hasn't broken ground yet
       { jobId: orchardRidge.id, roleOrTrade: 'Excavation Contractor', requiredCount: 1 }, // unfilled — sitework not yet staffed
