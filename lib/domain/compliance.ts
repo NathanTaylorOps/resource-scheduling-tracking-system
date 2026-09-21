@@ -112,6 +112,15 @@ export function recordCompletion(
  * For assets tracked on more than one counter at once (e.g. a generator on both
  * run-hours and calendar age), the asset is due at whichever counter trips first —
  * the same "whichever comes first" logic used for life-limited aircraft parts.
+ *
+ * Not called from the app today: EquipmentCompliance and MaintenancePlan
+ * rows each govern exactly one counter (see schema.prisma), so a hybrid
+ * requirement ("every 500 hours or 12 months, whichever comes first") isn't
+ * representable as a single item yet — it would need two rows treated as
+ * one, which the schema doesn't group. This is the primitive that
+ * comparison would run on once that grouping exists; verified against its
+ * own worked example below rather than deleted ahead of that modeling
+ * decision. See README, "Known limitations / roadmap."
  */
 export function earliestDue(
   schedules: Array<{ schedule: ComplianceSchedule; currentValue: number }>,
