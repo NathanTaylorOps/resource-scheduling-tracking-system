@@ -14,7 +14,12 @@ export default async function WorkersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Crew</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Crew</h1>
+        <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline">
+          Subcontractor firms →
+        </Link>
+      </div>
       <div className="overflow-hidden rounded-lg border border-outdoor-border">
         <table className="w-full text-sm">
           <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -27,8 +32,14 @@ export default async function WorkersPage() {
           </thead>
           <tbody className="divide-y divide-outdoor-border bg-white">
             {workers.map((worker) => {
-              const statuses = worker.certifications.map((c) => getCertificationStatus(c.expiryDate, now).status);
-              const worst = statuses.includes('expired') ? 'blocked' : statuses.includes('expiring_soon') ? 'warning' : 'ok';
+              const statuses = worker.certifications.map(
+                (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status,
+              );
+              const worst = statuses.includes('expired')
+                ? 'blocked'
+                : statuses.includes('expiring_soon') || statuses.includes('aging') || statuses.includes('renewal_pending')
+                  ? 'warning'
+                  : 'ok';
               return (
                 <tr key={worker.id} className="hover:bg-outdoor-surface">
                   <td className="px-4 py-3">

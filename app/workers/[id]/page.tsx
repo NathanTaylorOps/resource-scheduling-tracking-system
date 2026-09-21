@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
+import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { calculateUtilization } from '@/lib/domain/scheduling';
-import { StatusBadge } from '@/components/StatusBadge';
+import { StatusBadge, certificationBadge } from '@/components/StatusBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
     include: {
       certifications: { orderBy: { expiryDate: 'asc' } },
       assignments: { include: { job: true }, orderBy: { start: 'desc' } },
+      subcontractor: { include: { coiRecords: { orderBy: { expiryDate: 'asc' } } } },
     },
   });
   if (!worker) notFound();
@@ -24,6 +26,13 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
     periodStart,
     periodEnd: now,
   });
+
+  const subcontractorCompliance = worker.subcontractor
+    ? evaluateSubcontractorCompliance(
+        { licenseExpiryDate: worker.subcontractor.licenseExpiryDate, coiRecords: worker.subcontractor.coiRecords },
+        now,
+      )
+    : null;
 
   return (
     <div className="space-y-6">
@@ -45,27 +54,60 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
 
       <div className="card">
         <h2 className="mb-3 font-semibold">Certifications</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          Individual, person-held credentials — training cards, crane/rigging certs, trade licenses this worker
+          personally holds. A subcontractor firm&apos;s own insurance and business license are tracked separately,
+          below, since those gate the firm&apos;s eligibility to work, not this one person&apos;s.
+        </p>
         <ul className="divide-y divide-outdoor-border">
           {worker.certifications.map((cert) => {
-            const status = getCertificationStatus(cert.expiryDate, now);
+            const result = getCertificationStatus(cert.expiryDate, now, undefined, cert.renewalPattern, cert.renewalFiledDate);
+            const badge = certificationBadge(result);
             return (
               <li key={cert.id} className="flex items-center justify-between py-2">
                 <div>
                   <div className="font-medium">{cert.certType}</div>
                   <div className="text-xs text-zinc-500">
-                    {cert.issuingBody} · expires {cert.expiryDate.toLocaleDateString()}
+                    {cert.issuingBody} ·{' '}
+                    {cert.renewalPattern === 'INFORMAL_RECENCY'
+                      ? `recommended refresh by ${cert.expiryDate.toLocaleDateString()}`
+                      : `expires ${cert.expiryDate.toLocaleDateString()}`}
+                    {cert.renewalPattern === 'GRACE_PERIOD' && cert.renewalFiledDate && (
+                      <> · renewal filed {cert.renewalFiledDate.toLocaleDateString()}</>
+                    )}
                   </div>
                 </div>
-                <StatusBadge
-                  status={status.status === 'expired' ? 'blocked' : status.status === 'expiring_soon' ? 'warning' : 'ok'}
-                  label={status.status === 'expired' ? `Expired ${Math.abs(status.daysUntilExpiry)}d ago` : status.status === 'expiring_soon' ? `Due in ${status.daysUntilExpiry}d` : 'Current'}
-                />
+                <StatusBadge status={badge.status} label={badge.label} />
               </li>
             );
           })}
           {worker.certifications.length === 0 && <p className="py-2 text-sm text-zinc-500">No certifications on file.</p>}
         </ul>
       </div>
+
+      {worker.subcontractor && subcontractorCompliance && (
+        <div className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Subcontractor firm</h2>
+            <StatusBadge
+              status={subcontractorCompliance.hasExpiredItem ? 'blocked' : subcontractorCompliance.hasExpiringSoonItem ? 'warning' : 'ok'}
+              label={subcontractorCompliance.hasExpiredItem ? 'Compliance lapsed' : subcontractorCompliance.hasExpiringSoonItem ? 'Review needed' : 'All current'}
+            />
+          </div>
+          <Link href={`/subcontractors/${worker.subcontractor.id}`} className="font-medium hover:underline">
+            {worker.subcontractor.businessName}
+          </Link>
+          <p className="text-xs text-zinc-500">
+            {worker.subcontractor.trade}
+            {worker.subcontractor.licenseNumber && ` · license ${worker.subcontractor.licenseNumber}`}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            {worker.name} is a person on this firm&apos;s crew — the firm&apos;s insurance and license status
+            (full detail on its own page) is what actually gates whether it can be dispatched, independent of
+            which of its people shows up on a given day.
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <h2 className="mb-3 font-semibold">Assignment history</h2>

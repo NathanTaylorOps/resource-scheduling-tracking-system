@@ -1,4 +1,5 @@
 import type { ComponentStatus } from '@/lib/domain/readiness';
+import type { CertificationStatusResult } from '@/lib/domain/certifications';
 
 const LABELS: Record<ComponentStatus, string> = {
   ok: 'OK',
@@ -30,4 +31,29 @@ export function StatusBadge({ status, label }: { status: ComponentStatus; label?
       {label ?? LABELS[status]}
     </span>
   );
+}
+
+/**
+ * Maps a certification/COI/license status result down to the three-value
+ * severity StatusBadge renders, plus a human label — one place for this so
+ * a worker cert, a subcontractor's COI, and a subcontractor's license never
+ * end up colored differently for the same underlying status on different
+ * screens. 'aging' and 'renewal_pending' both read as a heads-up (warning),
+ * never a hard block — the credential is still legally held in both cases,
+ * see lib/domain/certifications.ts.
+ */
+export function certificationBadge(result: CertificationStatusResult): { status: ComponentStatus; label: string } {
+  switch (result.status) {
+    case 'expired':
+      return { status: 'blocked', label: `Expired ${Math.abs(result.daysUntilExpiry)}d ago` };
+    case 'expiring_soon':
+      return { status: 'warning', label: `Due in ${result.daysUntilExpiry}d` };
+    case 'aging':
+      return { status: 'warning', label: 'Refresh recommended' };
+    case 'renewal_pending':
+      return { status: 'warning', label: 'Renewal filed, pending' };
+    case 'valid':
+    default:
+      return { status: 'ok', label: 'Current' };
+  }
 }

@@ -1,0 +1,75 @@
+import Link from 'next/link';
+import { prisma } from '@/lib/db';
+import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
+import { StatusBadge } from '@/components/StatusBadge';
+
+export const dynamic = 'force-dynamic';
+
+export default async function SubcontractorsPage() {
+  const subcontractors = await prisma.subcontractor.findMany({
+    include: { coiRecords: true, workers: true },
+    orderBy: { businessName: 'asc' },
+  });
+  const now = new Date();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Subcontractor firms</h1>
+        <p className="text-sm text-zinc-500">
+          Entity-level insurance and license standing — the firm&apos;s eligibility to work, tracked separately
+          from the individual training records of whoever from the firm is actually on site. See{' '}
+          <Link href="/workers" className="underline">
+            crew
+          </Link>{' '}
+          for person-level certifications.
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-outdoor-border">
+        <table className="w-full text-sm">
+          <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <tr>
+              <th className="px-4 py-3">Business</th>
+              <th className="px-4 py-3">Trade</th>
+              <th className="px-4 py-3">Crew on file</th>
+              <th className="px-4 py-3">Compliance</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-outdoor-border bg-white">
+            {subcontractors.map((sub) => {
+              const compliance = evaluateSubcontractorCompliance(
+                { licenseExpiryDate: sub.licenseExpiryDate, coiRecords: sub.coiRecords },
+                now,
+              );
+              const worst = compliance.hasExpiredItem ? 'blocked' : compliance.hasExpiringSoonItem ? 'warning' : 'ok';
+              return (
+                <tr key={sub.id} className="hover:bg-outdoor-surface">
+                  <td className="px-4 py-3">
+                    <Link href={`/subcontractors/${sub.id}`} className="font-medium hover:underline">
+                      {sub.businessName}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">{sub.trade}</td>
+                  <td className="px-4 py-3">{sub.workers.length}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge
+                      status={worst}
+                      label={worst === 'blocked' ? 'Compliance lapsed' : worst === 'warning' ? 'Review needed' : 'All current'}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+            {subcontractors.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-sm text-zinc-500">
+                  No subcontractor firms on file.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

@@ -5,6 +5,7 @@ import { computeJobReadiness } from '@/lib/readiness-service';
 import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
 import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { getCertificationStatus } from '@/lib/domain/certifications';
+import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WeatherPanel } from '@/components/WeatherPanel';
 
@@ -14,7 +15,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const job = await prisma.job.findUnique({
     where: { id: params.id },
     include: {
-      assignments: { include: { worker: { include: { certifications: true } } }, orderBy: { start: 'asc' } },
+      assignments: {
+        include: {
+          worker: {
+            include: { certifications: true, subcontractor: { include: { coiRecords: true } } },
+          },
+        },
+        orderBy: { start: 'asc' },
+      },
     },
   });
   if (!job) notFound();
@@ -51,6 +59,20 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     job.assignments.map((a) => ({ roleOnJob: a.roleOnJob })),
   );
 
+  // --- Subcontractor compliance: entity-level COI/license standing for any
+  // subcontractor firm with a worker assigned here, distinct from the
+  // individual certifications checked per assignment below ---
+  const subcontractorsOnJob = new Map(
+    job.assignments
+      .filter((a) => a.worker.subcontractor)
+      .map((a) => [a.worker.subcontractor!.id, a.worker.subcontractor!]),
+  );
+  const subcontractorIssues = [...subcontractorsOnJob.values()]
+    .map((sub) => ({ sub, compliance: evaluateSubcontractorCompliance({ licenseExpiryDate: sub.licenseExpiryDate, coiRecords: sub.coiRecords }, now) }))
+    .filter(({ compliance }) => compliance.hasExpiredItem || compliance.hasExpiringSoonItem);
+  const lapsedSubcontractors = subcontractorIssues.filter(({ compliance }) => compliance.hasExpiredItem);
+  const reviewSubcontractors = subcontractorIssues.filter(({ compliance }) => !compliance.hasExpiredItem);
+
   // --- Equipment reservations: forward bookings on this job's assets, checked
   // for the same kind of overlap findOverlaps checks for crew ---
   const reservationsForJob = await prisma.equipmentReservation.findMany({
@@ -71,6 +93,13 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const conflictedEquipmentNames = [...new Set(
     equipmentConflicts.map((c) => allReservationsForThoseAssets.find((r) => r.equipmentId === c.equipmentId)?.equipment.name ?? 'An asset'),
   )];
+
+  // A reservation on an asset that's currently down for service — a
+  // different problem than two reservations overlapping, same "worth a
+  // heads-up before it becomes a surprise" severity (see the matching note
+  // in lib/readiness-service.ts, which feeds this into the same equipment
+  // readiness component).
+  const reservedButDownForService = reservationsForJob.filter((r) => r.equipment.status === 'DOWN_FOR_SERVICE');
 
   // --- Permits & inspections ---
   const permits = await prisma.permit.findMany({
@@ -141,6 +170,23 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             window.
           </p>
         )}
+        {reservedButDownForService.length > 0 && (
+          <p className="mt-3 text-sm text-amber-700">
+            Reserved but out of service: {[...new Set(reservedButDownForService.map((r) => r.equipment.name))].join(', ')} —
+            currently down for service ahead of its booked window here.
+          </p>
+        )}
+        {lapsedSubcontractors.length > 0 && (
+          <p className="mt-3 text-sm text-red-700">
+            Subcontractor compliance lapsed: {lapsedSubcontractors.map(({ sub }) => sub.businessName).join(', ')} —
+            insurance or license on file has expired.
+          </p>
+        )}
+        {reviewSubcontractors.length > 0 && (
+          <p className="mt-3 text-sm text-amber-700">
+            Subcontractor compliance to review: {reviewSubcontractors.map(({ sub }) => sub.businessName).join(', ')}.
+          </p>
+        )}
         {failedInspections.length > 0 && (
           <p className="mt-3 text-sm text-red-700">
             Failed inspection: {failedInspections
@@ -162,8 +208,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <ul className="divide-y divide-outdoor-border">
             {job.assignments.map((a) => {
               const expiredOrSoon = a.worker.certifications.filter(
-                (c) => getCertificationStatus(c.expiryDate, now).status !== 'valid',
+                (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status !== 'valid',
               );
+              const subCompliance = a.worker.subcontractor
+                ? evaluateSubcontractorCompliance(
+                    { licenseExpiryDate: a.worker.subcontractor.licenseExpiryDate, coiRecords: a.worker.subcontractor.coiRecords },
+                    now,
+                  )
+                : null;
               return (
                 <li key={a.id} className="flex items-center justify-between py-2">
                   <div>
@@ -172,11 +224,18 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                     </Link>
                     <div className="text-xs text-zinc-500">
                       {a.roleOnJob} · {a.start.toLocaleDateString()} – {a.end.toLocaleDateString()}
+                      {a.worker.subcontractor && ` · ${a.worker.subcontractor.businessName}`}
                     </div>
                   </div>
-                  {expiredOrSoon.length > 0 && (
-                    <span className="text-xs font-medium text-amber-700">{expiredOrSoon.length} cert{expiredOrSoon.length > 1 ? 's' : ''} to review</span>
-                  )}
+                  <div className="text-right">
+                    {expiredOrSoon.length > 0 && (
+                      <div className="text-xs font-medium text-amber-700">{expiredOrSoon.length} cert{expiredOrSoon.length > 1 ? 's' : ''} to review</div>
+                    )}
+                    {subCompliance?.hasExpiredItem && <div className="text-xs font-medium text-red-700">Firm compliance lapsed</div>}
+                    {!subCompliance?.hasExpiredItem && subCompliance?.hasExpiringSoonItem && (
+                      <div className="text-xs font-medium text-amber-700">Firm compliance to review</div>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -253,13 +312,27 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                 {p.inspections.length > 0 && (
                   <ul className="mt-2 space-y-1 border-l border-outdoor-border pl-3">
                     {p.inspections.map((i) => (
-                      <li key={i.id} className="flex items-center justify-between text-xs">
-                        <span className="text-zinc-600">{i.inspectionType.replace(/_/g, ' ').toLowerCase()}</span>
-                        <span className={i.status === 'FAILED' ? 'font-medium text-red-700' : i.status === 'PASSED' ? 'text-green-700' : 'text-zinc-500'}>
-                          {i.status === 'SCHEDULED' && i.scheduledDate
-                            ? `scheduled ${i.scheduledDate.toLocaleDateString()}`
-                            : i.status.replace(/_/g, ' ').toLowerCase()}
-                        </span>
+                      <li key={i.id} className="text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-600">{i.inspectionType.replace(/_/g, ' ').toLowerCase()}</span>
+                          <span className={i.status === 'FAILED' ? 'font-medium text-red-700' : i.status === 'PASSED' ? 'text-green-700' : 'text-zinc-500'}>
+                            {i.status === 'SCHEDULED' && i.scheduledDate
+                              ? `scheduled ${i.scheduledDate.toLocaleDateString()}`
+                              : i.status.replace(/_/g, ' ').toLowerCase()}
+                          </span>
+                        </div>
+                        {i.status === 'FAILED' && (i.correctionNotes || i.reinspectionScheduledDate) && (
+                          <div className="mt-1 rounded border border-red-100 bg-red-50 px-2 py-1.5 text-zinc-600">
+                            {i.correctionNotes && <div>Correction needed: {i.correctionNotes}</div>}
+                            {i.correctionResponsible && <div>Responsible: {i.correctionResponsible}</div>}
+                            {i.reinspectionScheduledDate && (
+                              <div>
+                                Re-inspection {i.reinspectionScheduledDate.toLocaleDateString()}
+                                {i.reinspectionChannel && ` · ${i.reinspectionChannel.replace(/_/g, ' ').toLowerCase()}`}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
