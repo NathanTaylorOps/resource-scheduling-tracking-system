@@ -18,6 +18,14 @@ export interface ScanCustodyInput {
   scannedByWorkerId: string;
   jobId?: string;
   locationNote?: string;
+  /**
+   * The asset's status *before* this scan is applied. Required so
+   * custodyUpdateFor can refuse a CHECK_OUT of an asset that's currently
+   * down for service — the caller (app/api/equipment/[id]/scan/route.ts)
+   * must read this from the same transaction that will apply the update,
+   * not from a snapshot taken before the transaction opened.
+   */
+  currentStatus: string;
 }
 
 export interface EquipmentCustodyUpdate {
@@ -27,9 +35,31 @@ export interface EquipmentCustodyUpdate {
   status?: string;
 }
 
+/**
+ * Thrown when a requested action is not valid given the asset's current
+ * status — e.g. checking out an asset that's down for service. The route
+ * catches this and returns 409, distinct from a validation 400 or a 500.
+ */
+export class CustodyActionRejected extends Error {}
+
 export function custodyUpdateFor(input: ScanCustodyInput): EquipmentCustodyUpdate {
   switch (input.action) {
     case 'CHECK_OUT':
+      // An asset with an open defect (status DOWN_FOR_SERVICE) cannot be
+      // checked out to a job — that would silently un-flag a known-broken
+      // asset as available the moment someone scans it, with the work
+      // order left open and now invisible everywhere that reads
+      // Equipment.status instead of querying WorkOrder directly. The
+      // defect has to be resolved (which flips status back via the
+      // work-order-complete route) before the asset can move again.
+      if (input.currentStatus === 'DOWN_FOR_SERVICE') {
+        throw new CustodyActionRejected(
+          'This asset is down for service with an open work order and cannot be checked out until that work order is completed.',
+        );
+      }
+      if (input.currentStatus === 'RETIRED') {
+        throw new CustodyActionRejected('This asset is retired and cannot be checked out.');
+      }
       // Custody follows the crew member who scanned it out, not just the
       // job — that's the difference between "somewhere at Harbor Point" and
       // "signed for by Marcus" when a GM goes looking for an asset.
