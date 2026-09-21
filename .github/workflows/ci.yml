@@ -1,9 +1,15 @@
 # Runs on every push and pull request: installs the app the same way the
-# README's "Getting started" section does, applies the committed Prisma
-# migrations to a throwaway SQLite database, runs the dependency-free
-# domain-logic suite, and does a full production build. Nothing here needs
-# a database service or any secret — that's the payoff of this being a
-# local-SQLite app by design (see README, "Tech stack").
+# README's "Getting started" section does, pushes the schema straight to a
+# throwaway SQLite database, runs the dependency-free domain-logic suite,
+# and does a full production build. Nothing here needs a database service
+# or any secret — that's the payoff of this being a local-SQLite app by
+# design (see README, "Tech stack").
+#
+# Uses `npm install` rather than `npm ci`, and `prisma db push` rather than
+# `prisma migrate deploy`, because no package-lock.json or prisma/migrations/
+# history is committed yet — see README, "Known limitations / roadmap", for
+# why. Both are the natural upgrade once a lockfile and a real migration
+# history exist.
 name: CI
 
 on:
@@ -36,27 +42,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # No cache: 'npm' — actions/setup-node's built-in npm cache keys
+          # off a committed lockfile, and this repo doesn't have one yet
+          # (see README, "Known limitations / roadmap").
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      # Explicit rather than relying on npm's postinstall hook — some npm
-      # configurations (this project's own local setup among them, see
-      # README) gate lifecycle scripts, so the client generation that
-      # matters for the build below is spelled out as its own step.
+      # Explicit rather than relying on npm's postinstall hook, so the
+      # client generation the build below depends on is spelled out as its
+      # own step regardless of what triggers postinstall on a given runner.
       - name: Generate the Prisma client
         run: npx prisma generate
 
       - name: Lint
         run: npm run lint
 
-      # Applies prisma/migrations/ to a fresh database exactly as a real
-      # deployment would — the most direct regression check available for
-      # the SQLite/enum schema issue this project hit during its first
-      # real run (see README, "Data model").
-      - name: Apply Prisma migrations
-        run: npx prisma migrate deploy
+      # Pushes schema.prisma straight to a fresh database exactly as a real
+      # deployment would need it applied — the most direct regression check
+      # available for the SQLite/enum schema issue this project hit during
+      # its first real run (see README, "Data model"). `db push` rather than
+      # `migrate deploy` because no migration history is committed yet — see
+      # the note at the top of this file.
+      - name: Push the Prisma schema
+        run: npx prisma db push
 
       - name: Run the domain-logic test suite
         run: npm run test:domain
