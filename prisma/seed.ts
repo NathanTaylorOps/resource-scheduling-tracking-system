@@ -8,7 +8,21 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { EmploymentType, JobStatus, WeatherSensitivity, EquipmentStatus, CounterType, ComplianceType, ScanAction, WorkOrderSource, WorkOrderStatus } from '../lib/enums';
+import {
+  EmploymentType,
+  JobStatus,
+  WeatherSensitivity,
+  EquipmentStatus,
+  CounterType,
+  ComplianceType,
+  ScanAction,
+  WorkOrderSource,
+  WorkOrderStatus,
+  PermitType,
+  PermitStatus,
+  InspectionType,
+  InspectionStatus,
+} from '../lib/enums';
 
 const prisma = new PrismaClient();
 
@@ -26,9 +40,16 @@ async function main() {
   await prisma.maintenancePlan.deleteMany();
   await prisma.equipmentCompliance.deleteMany();
   await prisma.equipmentLifeCounter.deleteMany();
+  await prisma.equipmentReservation.deleteMany();
   await prisma.equipment.deleteMany();
   await prisma.workerCertification.deleteMany();
   await prisma.assignment.deleteMany();
+  await prisma.safetyMeetingAttendee.deleteMany();
+  await prisma.inspection.deleteMany();
+  await prisma.dailyLog.deleteMany();
+  await prisma.safetyMeeting.deleteMany();
+  await prisma.jobRoleRequirement.deleteMany();
+  await prisma.permit.deleteMany();
   await prisma.weatherCache.deleteMany();
   await prisma.worker.deleteMany();
   await prisma.job.deleteMany();
@@ -625,8 +646,358 @@ async function main() {
     ],
   });
 
+  // ---------------------------------------------------------------------
+  // Crew requirements — each job's staffing plan, independent of who's
+  // actually assigned. Cedar Hollow's unfilled electrician role and Orchard
+  // Ridge's unfilled superintendent/sitework roles are deliberate: a job
+  // can be fully staffed on paper (no scheduling conflicts) and still be
+  // missing a trade the crew list alone would never surface. roleOrTrade
+  // is matched by exact string against Assignment.roleOnJob, so these are
+  // written to line up with the roleOnJob values in the assignments above.
+  // ---------------------------------------------------------------------
+  await prisma.jobRoleRequirement.createMany({
+    data: [
+      { jobId: cedarHollow.id, roleOrTrade: 'Site Superintendent', requiredCount: 1 },
+      { jobId: cedarHollow.id, roleOrTrade: 'Carpenter Foreman', requiredCount: 1 },
+      { jobId: cedarHollow.id, roleOrTrade: 'Carpenter', requiredCount: 2 },
+      { jobId: cedarHollow.id, roleOrTrade: 'Licensed Electrician', requiredCount: 1 }, // unfilled — no electrician assigned to this job yet
+      { jobId: harborPoint.id, roleOrTrade: 'Electrician', requiredCount: 1 },
+      { jobId: harborPoint.id, roleOrTrade: 'Project Manager', requiredCount: 1 },
+      { jobId: orchardRidge.id, roleOrTrade: 'Site Superintendent', requiredCount: 1 }, // unfilled — job hasn't broken ground yet
+      { jobId: orchardRidge.id, roleOrTrade: 'Excavation Contractor', requiredCount: 1 }, // unfilled — sitework not yet staffed
+      { jobId: orchardRidge.id, roleOrTrade: 'Project Manager', requiredCount: 1 },
+      { jobId: mapleCrossing.id, roleOrTrade: 'Plumber', requiredCount: 1 },
+      { jobId: mapleCrossing.id, roleOrTrade: 'Heavy Equipment Operator', requiredCount: 1 },
+      { jobId: mapleCrossing.id, roleOrTrade: 'Laborer', requiredCount: 1 },
+      { jobId: mapleCrossing.id, roleOrTrade: 'Project Manager', requiredCount: 1 },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
+  // Equipment reservations — forward bookings, distinct from the current-
+  // custody fields set on Equipment above. The skid steer is deliberately
+  // double-booked between Cedar Hollow and Orchard Ridge so the conflict
+  // detector has a real overlap to catch; the rest are ordinary,
+  // non-overlapping forward plans, including one asset booked to a
+  // different job than the one it's currently sitting at — the plan-vs-
+  // fact distinction this table exists to capture.
+  // ---------------------------------------------------------------------
+  await prisma.equipmentReservation.createMany({
+    data: [
+      { equipmentId: skidSteer.id, jobId: cedarHollow.id, start: daysFromNow(5), end: daysFromNow(12) },
+      // Overlaps the reservation above by two days — the deliberate conflict.
+      { equipmentId: skidSteer.id, jobId: orchardRidge.id, start: daysFromNow(10), end: daysFromNow(20) },
+      { equipmentId: trackLoader.id, jobId: harborPoint.id, start: daysFromNow(3), end: daysFromNow(8) },
+      { equipmentId: excavator.id, jobId: mapleCrossing.id, start: daysAgo(2), end: daysFromNow(6) },
+      { equipmentId: scaffold.id, jobId: orchardRidge.id, start: daysFromNow(14), end: daysFromNow(45) },
+      { equipmentId: plateCompactor.id, jobId: cedarHollow.id, start: daysFromNow(1), end: daysFromNow(3) },
+      // Normally sits at Maple Crossing but is booked out to Cedar Hollow
+      // for a short haul-off window.
+      { equipmentId: dumpTrailer.id, jobId: cedarHollow.id, start: daysFromNow(6), end: daysFromNow(9) },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
+  // Permits and inspections — the legal gate on whether work can proceed
+  // at all. Cedar Hollow's failed framing inspection and Lakeview's
+  // expired permit are the deliberate blocked-path examples; Maple
+  // Crossing's fully-finaled set shows the ordinary, healthy case; Orchard
+  // Ridge shows the pre-construction, still-applied-for case.
+  // ---------------------------------------------------------------------
+  await prisma.permit.create({
+    data: {
+      jobId: cedarHollow.id,
+      permitType: PermitType.BUILDING,
+      permitNumber: 'SC-BLD-0742',
+      issuingAuthority: 'Snohomish County Department of Planning and Development',
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(50),
+      issuedDate: daysAgo(44),
+      expiryDate: daysFromNow(300),
+      inspections: {
+        create: [
+          { inspectionType: InspectionType.FOOTING, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(40) },
+          { inspectionType: InspectionType.FOUNDATION, sequence: 2, status: InspectionStatus.PASSED, completedDate: daysAgo(30) },
+          {
+            inspectionType: InspectionType.FRAMING,
+            sequence: 3,
+            status: InspectionStatus.FAILED,
+            completedDate: daysAgo(5),
+            inspectorNotes:
+              'Shear wall nailing pattern at grid line C does not match the approved schedule. Re-nail and request re-inspection before proceeding to insulation.',
+          },
+          { inspectionType: InspectionType.INSULATION, sequence: 4, status: InspectionStatus.NOT_SCHEDULED },
+          { inspectionType: InspectionType.FINAL, sequence: 5, status: InspectionStatus.NOT_SCHEDULED },
+        ],
+      },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: cedarHollow.id,
+      permitType: PermitType.ELECTRICAL,
+      permitNumber: 'SC-ELE-0318',
+      issuingAuthority: 'Snohomish County Department of Planning and Development',
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(48),
+      issuedDate: daysAgo(41),
+      expiryDate: daysFromNow(300),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_ELECTRICAL, sequence: 1, status: InspectionStatus.NOT_SCHEDULED }] },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: cedarHollow.id,
+      permitType: PermitType.PLUMBING,
+      permitNumber: 'SC-PLM-0291',
+      issuingAuthority: 'Snohomish County Department of Planning and Development',
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(48),
+      issuedDate: daysAgo(41),
+      expiryDate: daysFromNow(300),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_PLUMBING, sequence: 1, status: InspectionStatus.NOT_SCHEDULED }] },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: cedarHollow.id,
+      permitType: PermitType.MECHANICAL,
+      permitNumber: 'SC-MEC-0155',
+      issuingAuthority: 'Snohomish County Department of Planning and Development',
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(46),
+      issuedDate: daysAgo(39),
+      expiryDate: daysFromNow(300),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_MECHANICAL, sequence: 1, status: InspectionStatus.NOT_SCHEDULED }] },
+    },
+  });
+
+  await prisma.permit.create({
+    data: {
+      jobId: harborPoint.id,
+      permitType: PermitType.BUILDING,
+      permitNumber: 'EV-BLD-1140',
+      issuingAuthority: 'City of Everett Building Division',
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(25),
+      issuedDate: daysAgo(19),
+      expiryDate: daysFromNow(340),
+      inspections: {
+        create: [
+          { inspectionType: InspectionType.FRAMING, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(12) },
+          { inspectionType: InspectionType.INSULATION, sequence: 2, status: InspectionStatus.PASSED, completedDate: daysAgo(4) },
+          { inspectionType: InspectionType.FINAL, sequence: 3, status: InspectionStatus.SCHEDULED, scheduledDate: daysFromNow(5) },
+        ],
+      },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: harborPoint.id,
+      permitType: PermitType.ELECTRICAL,
+      permitNumber: 'EV-ELE-0512',
+      issuingAuthority: 'City of Everett Building Division',
+      status: PermitStatus.ISSUED,
+      appliedDate: daysAgo(24),
+      issuedDate: daysAgo(18),
+      expiryDate: daysFromNow(340),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_ELECTRICAL, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(6) }] },
+    },
+  });
+
+  await prisma.permit.create({
+    data: {
+      jobId: orchardRidge.id,
+      permitType: PermitType.BUILDING,
+      issuingAuthority: 'King County Permitting Division',
+      status: PermitStatus.APPLIED,
+      appliedDate: daysAgo(20),
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: orchardRidge.id,
+      permitType: PermitType.GRADING,
+      issuingAuthority: 'King County Permitting Division',
+      status: PermitStatus.APPLIED,
+      appliedDate: daysAgo(25),
+    },
+  });
+
+  await prisma.permit.create({
+    data: {
+      jobId: mapleCrossing.id,
+      permitType: PermitType.BUILDING,
+      permitNumber: 'BO-BLD-0088',
+      issuingAuthority: 'City of Bothell Community Development',
+      status: PermitStatus.FINALED,
+      appliedDate: daysAgo(95),
+      issuedDate: daysAgo(88),
+      expiryDate: daysFromNow(200),
+      inspections: {
+        create: [
+          { inspectionType: InspectionType.FOOTING, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(85) },
+          { inspectionType: InspectionType.FOUNDATION, sequence: 2, status: InspectionStatus.PASSED, completedDate: daysAgo(75) },
+          { inspectionType: InspectionType.FRAMING, sequence: 3, status: InspectionStatus.PASSED, completedDate: daysAgo(50) },
+          { inspectionType: InspectionType.INSULATION, sequence: 4, status: InspectionStatus.PASSED, completedDate: daysAgo(20) },
+          { inspectionType: InspectionType.FINAL, sequence: 5, status: InspectionStatus.PASSED, completedDate: daysAgo(3) },
+        ],
+      },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: mapleCrossing.id,
+      permitType: PermitType.ELECTRICAL,
+      permitNumber: 'BO-ELE-0044',
+      issuingAuthority: 'City of Bothell Community Development',
+      status: PermitStatus.FINALED,
+      appliedDate: daysAgo(93),
+      issuedDate: daysAgo(86),
+      expiryDate: daysFromNow(200),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_ELECTRICAL, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(45) }] },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: mapleCrossing.id,
+      permitType: PermitType.PLUMBING,
+      permitNumber: 'BO-PLM-0039',
+      issuingAuthority: 'City of Bothell Community Development',
+      status: PermitStatus.FINALED,
+      appliedDate: daysAgo(93),
+      issuedDate: daysAgo(86),
+      expiryDate: daysFromNow(200),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_PLUMBING, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(48) }] },
+    },
+  });
+  await prisma.permit.create({
+    data: {
+      jobId: mapleCrossing.id,
+      permitType: PermitType.MECHANICAL,
+      permitNumber: 'BO-MEC-0021',
+      issuingAuthority: 'City of Bothell Community Development',
+      status: PermitStatus.FINALED,
+      appliedDate: daysAgo(91),
+      issuedDate: daysAgo(84),
+      expiryDate: daysFromNow(200),
+      inspections: { create: [{ inspectionType: InspectionType.ROUGH_IN_MECHANICAL, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(42) }] },
+    },
+  });
+
+  // Deliberate blocked-path example: issued, partly inspected, then lapsed
+  // before the project reached final — which is also the honest reason
+  // this job is sitting on hold rather than mobilized.
+  await prisma.permit.create({
+    data: {
+      jobId: lakeview.id,
+      permitType: PermitType.BUILDING,
+      permitNumber: 'KI-BLD-0967',
+      issuingAuthority: 'City of Kirkland Building & Development',
+      status: PermitStatus.EXPIRED,
+      appliedDate: daysAgo(250),
+      issuedDate: daysAgo(220),
+      expiryDate: daysAgo(15),
+      inspections: {
+        create: [
+          { inspectionType: InspectionType.FRAMING, sequence: 1, status: InspectionStatus.PASSED, completedDate: daysAgo(180) },
+          { inspectionType: InspectionType.FINAL, sequence: 2, status: InspectionStatus.NOT_SCHEDULED },
+        ],
+      },
+    },
+  });
+
+  // ---------------------------------------------------------------------
+  // Daily field log — standard GC documentation, the kind that matters in
+  // a dispute or a warranty claim. Informational only; see the doc
+  // comment on the DailyLog model for why it doesn't feed readiness.
+  // ---------------------------------------------------------------------
+  await prisma.dailyLog.createMany({
+    data: [
+      { jobId: cedarHollow.id, logDate: daysAgo(9), weatherSummary: 'Overcast, high 54°F, light rain PM', crewCount: 5, workPerformed: 'Continued exterior wall framing on the north elevation; set headers for the great room windows.', submittedBy: dale.id },
+      { jobId: cedarHollow.id, logDate: daysAgo(7), weatherSummary: 'Clear, high 61°F', crewCount: 6, workPerformed: 'Completed second-floor deck sheathing; began roof truss layout.', submittedBy: dale.id },
+      { jobId: cedarHollow.id, logDate: daysAgo(5), weatherSummary: 'Rain most of the day, high 49°F', crewCount: 4, workPerformed: 'Framing inspection with the county (failed — shear wall nailing at grid C); crew shifted to interior blocking while the re-nail plan was worked out.', delaysNotes: 'Framing inspection failed — see permit record. Re-nailing grid line C before re-inspection can be requested.', submittedBy: dale.id },
+      { jobId: cedarHollow.id, logDate: daysAgo(2), weatherSummary: 'Partly cloudy, high 58°F', crewCount: 5, workPerformed: 'Re-nailed shear panels at grid line C per the corrected schedule; requested re-inspection.', submittedBy: dale.id },
+      { jobId: harborPoint.id, logDate: daysAgo(8), weatherSummary: 'Clear, high 64°F', crewCount: 3, workPerformed: 'Demo of the existing kitchen and adjacent bath complete; debris hauled off-site.', submittedBy: kenji.id },
+      { jobId: harborPoint.id, logDate: daysAgo(4), weatherSummary: 'Overcast, high 57°F', crewCount: 3, workPerformed: 'Rough electrical for the kitchen relocation passed inspection; plumbing on standby pending fixture delivery.', delaysNotes: 'Fixture delivery delayed by the supplier — plumbing rough-in pushed two days.', submittedBy: kenji.id },
+      { jobId: harborPoint.id, logDate: daysAgo(1), weatherSummary: 'Clear, high 62°F', crewCount: 4, workPerformed: 'Insulation pass complete in the kitchen and bath; drywall crew scheduled to start Monday.', submittedBy: kenji.id },
+      { jobId: mapleCrossing.id, logDate: daysAgo(6), weatherSummary: 'Clear, high 68°F', crewCount: 4, workPerformed: 'Final grading and landscaping prep around the foundation perimeter; dump trailer hauling excess spoils off-site.', submittedBy: kenji.id },
+      { jobId: mapleCrossing.id, logDate: daysAgo(3), weatherSummary: 'Clear, high 70°F', crewCount: 3, workPerformed: 'Punch-list walk with the PM; touch-up paint and final plumbing fixture install.', submittedBy: kenji.id },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
+  // Toolbox talks — safety-culture documentation. Like the daily log, this
+  // doesn't gate readiness; it's evidence of an operating safety program.
+  // ---------------------------------------------------------------------
+  await prisma.safetyMeeting.create({
+    data: {
+      jobId: cedarHollow.id,
+      meetingDate: daysAgo(30),
+      topic: 'Fall protection and harness inspection before roof work',
+      conductedBy: dale.id,
+      attendees: { create: [{ workerId: dale.id }, { workerId: marcus.id }, { workerId: priya.id }] },
+    },
+  });
+  await prisma.safetyMeeting.create({
+    data: {
+      jobId: cedarHollow.id,
+      meetingDate: daysAgo(7),
+      topic: 'Ladder safety and material staging on uneven grade',
+      conductedBy: marcus.id,
+      attendees: { create: [{ workerId: marcus.id }, { workerId: priya.id }, { workerId: ollie.id }] },
+    },
+  });
+  await prisma.safetyMeeting.create({
+    data: {
+      jobId: harborPoint.id,
+      meetingDate: daysAgo(15),
+      topic: 'Lead-safe work practices for pre-1978 renovation',
+      conductedBy: kenji.id,
+      attendees: { create: [{ workerId: teo.id }, { workerId: ollie.id }, { workerId: kenji.id }] },
+    },
+  });
+  await prisma.safetyMeeting.create({
+    data: {
+      jobId: harborPoint.id,
+      meetingDate: daysAgo(2),
+      topic: 'Extension cord and GFCI protection on temporary power',
+      conductedBy: teo.id,
+      attendees: { create: [{ workerId: teo.id }, { workerId: ollie.id }] },
+    },
+  });
+  await prisma.safetyMeeting.create({
+    data: {
+      jobId: mapleCrossing.id,
+      meetingDate: daysAgo(20),
+      topic: 'Trenching and excavation safety near the property line',
+      conductedBy: kenji.id,
+      attendees: { create: [{ workerId: bigSam.id }, { workerId: jules.id }, { workerId: renata.id }] },
+    },
+  });
+  await prisma.safetyMeeting.create({
+    data: {
+      jobId: mapleCrossing.id,
+      meetingDate: daysAgo(6),
+      topic: 'Heat stress awareness and hydration',
+      conductedBy: kenji.id,
+      attendees: { create: [{ workerId: bigSam.id }, { workerId: jules.id }] },
+    },
+  });
+
   const equipmentCount = await prisma.equipment.count();
-  console.log(`Seeded ${jobs.length} jobs, ${workers.length} workers, ${equipmentCount} equipment items.`);
+  const roleRequirementCount = await prisma.jobRoleRequirement.count();
+  const reservationCount = await prisma.equipmentReservation.count();
+  const permitCount = await prisma.permit.count();
+  const inspectionCount = await prisma.inspection.count();
+  const dailyLogCount = await prisma.dailyLog.count();
+  const safetyMeetingCount = await prisma.safetyMeeting.count();
+  console.log(
+    `Seeded ${jobs.length} jobs, ${workers.length} workers, ${equipmentCount} equipment items, ` +
+      `${roleRequirementCount} role requirements, ${reservationCount} equipment reservations, ` +
+      `${permitCount} permits (${inspectionCount} inspections), ${dailyLogCount} daily logs, ` +
+      `${safetyMeetingCount} toolbox talks.`,
+  );
 }
 
 main()
