@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
 interface CreateDailyLogBody {
   logDate: string;
@@ -62,17 +67,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'A daily log already exists for this job on that date.' }, { status: 409 });
   }
 
-  const log = await prisma.dailyLog.create({
-    data: {
-      jobId: job.id,
-      logDate,
-      weatherSummary: body.weatherSummary?.trim() || null,
-      crewCount: body.crewCount,
-      workPerformed,
-      delaysNotes: body.delaysNotes?.trim() || null,
-      submittedBy,
-    },
-  });
-
-  return NextResponse.json({ id: log.id }, { status: 201 });
+  try {
+    const log = await prisma.dailyLog.create({
+      data: {
+        jobId: job.id,
+        logDate,
+        weatherSummary: body.weatherSummary?.trim() || null,
+        crewCount: body.crewCount,
+        workPerformed,
+        delaysNotes: body.delaysNotes?.trim() || null,
+        submittedBy,
+      },
+    });
+    return NextResponse.json({ id: log.id }, { status: 201 });
+  } catch (error) {
+    // Same TOCTOU as the findUnique check above can't close on its own:
+    // two concurrent submissions for the same job/date can both pass it
+    // and race into create(). The @@unique([jobId, logDate]) constraint on
+    // DailyLog is the real guard; this turns its violation into the same
+    // 409 message rather than an unhandled 500.
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json({ error: 'A daily log already exists for this job on that date.' }, { status: 409 });
+    }
+    throw error;
+  }
 }

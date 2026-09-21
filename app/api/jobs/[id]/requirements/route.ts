@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { parseCertTypesList } from '@/lib/domain/certifications';
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
 interface CreateRequirementBody {
   roleOrTrade: string;
@@ -59,14 +64,30 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 
   const parsedCertTypes = parseCertTypesList(body.requiredCertTypes);
-  const requirement = await prisma.jobRoleRequirement.create({
-    data: {
-      jobId: job.id,
-      roleOrTrade,
-      requiredCount,
-      requiredCertTypes: parsedCertTypes.length > 0 ? parsedCertTypes.join(', ') : null,
-    },
-  });
-
-  return NextResponse.json({ id: requirement.id }, { status: 201 });
+  try {
+    const requirement = await prisma.jobRoleRequirement.create({
+      data: {
+        jobId: job.id,
+        roleOrTrade,
+        requiredCount,
+        requiredCertTypes: parsedCertTypes.length > 0 ? parsedCertTypes.join(', ') : null,
+      },
+    });
+    return NextResponse.json({ id: requirement.id }, { status: 201 });
+  } catch (error) {
+    // The findFirst check above is a courtesy for the common case (a fast
+    // 409 with a clear message before ever touching the write). It cannot
+    // by itself prevent two concurrent submissions for the same role from
+    // both passing it and racing into create() — the @@unique([jobId,
+    // roleOrTrade]) constraint on JobRoleRequirement is what actually
+    // enforces "one row per role," and this is what turns its violation
+    // into the same clean 409 rather than an unhandled 500.
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        { error: `${roleOrTrade} already has a staffing requirement on this job. Remove it below before adding a replacement.` },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
 }
