@@ -25,10 +25,15 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
   if (!job) notFound();
 
   const now = new Date();
-  const [readiness, equipment, permits] = await Promise.all([
+  // Same-day lookup by the compound unique key, rather than fetching and
+  // filtering every log — DailyLog is one-per-job-per-day, so this either
+  // finds today's entry or confirms there isn't one yet.
+  const todaysLogDate = new Date(now.toISOString().slice(0, 10));
+  const [readiness, equipment, permits, todaysLog] = await Promise.all([
     computeJobReadiness(job.id),
     prisma.equipment.findMany({ where: { currentJobId: job.id } }),
     prisma.permit.findMany({ where: { jobId: job.id }, include: { inspections: true } }),
+    prisma.dailyLog.findUnique({ where: { jobId_logDate: { jobId: job.id, logDate: todaysLogDate } } }),
   ]);
 
   const crew = [...new Map(job.assignments.map((a) => [a.worker.id, { id: a.worker.id, name: a.worker.name }])).values()];
@@ -118,7 +123,21 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
 
       <div className="card">
         <h2 className="mb-3 font-semibold">Log the day</h2>
-        <DailyLogForm jobId={job.id} crew={crew} />
+        <DailyLogForm
+          jobId={job.id}
+          crew={crew}
+          existingLog={
+            todaysLog && {
+              id: todaysLog.id,
+              logDate: todaysLog.logDate.toISOString(),
+              weatherSummary: todaysLog.weatherSummary,
+              crewCount: todaysLog.crewCount,
+              workPerformed: todaysLog.workPerformed,
+              delaysNotes: todaysLog.delaysNotes,
+              submittedBy: todaysLog.submittedBy,
+            }
+          }
+        />
         <ToolboxTalkForm jobId={job.id} crew={crew} />
       </div>
     </div>

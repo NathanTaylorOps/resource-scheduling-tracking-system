@@ -12,6 +12,7 @@ import { JobRequirementsEditor } from '@/components/JobRequirementsEditor';
 import { PermitsEditor } from '@/components/PermitsEditor';
 import { DailyLogForm } from '@/components/DailyLogForm';
 import { ToolboxTalkForm } from '@/components/ToolboxTalkForm';
+import { ToolboxTalkList } from '@/components/ToolboxTalkList';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,6 +130,12 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     include: { conductedByWorker: true, attendees: { include: { worker: true } } },
     orderBy: { meetingDate: 'desc' },
   });
+
+  // Today's log, if there is one — DailyLog's one-per-job-per-day constraint
+  // means this is the record the log form below edits in place rather than
+  // trying (and 409-ing) to create a second one for today.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todaysLog = dailyLogs.find((log) => log.logDate.toISOString().slice(0, 10) === todayKey) ?? null;
 
   // The crew list both the daily-log and toolbox-talk forms below draw
   // their worker pickers from — whoever's actually assigned to this job,
@@ -365,45 +372,36 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             ))}
             {dailyLogs.length === 0 && <p className="py-2 text-sm text-zinc-500">No daily logs submitted yet.</p>}
           </ul>
-          <DailyLogForm jobId={job.id} crew={crewOnJob} />
+          <DailyLogForm
+            jobId={job.id}
+            crew={crewOnJob}
+            existingLog={
+              todaysLog && {
+                id: todaysLog.id,
+                logDate: todaysLog.logDate.toISOString(),
+                weatherSummary: todaysLog.weatherSummary,
+                crewCount: todaysLog.crewCount,
+                workPerformed: todaysLog.workPerformed,
+                delaysNotes: todaysLog.delaysNotes,
+                submittedBy: todaysLog.submittedBy,
+              }
+            }
+          />
         </div>
 
         {/* Toolbox talks — safety-culture documentation, not a readiness gate */}
         <div className="card">
           <h2 className="mb-3 font-semibold">Toolbox talks</h2>
-          <ul className="divide-y divide-outdoor-border">
-            {safetyMeetings.map((meeting) => (
-              <li key={meeting.id} className="py-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{meeting.topic}</span>
-                  <span className="text-xs text-zinc-500">{meeting.meetingDate.toLocaleDateString()}</span>
-                </div>
-                <div className="text-xs text-zinc-500">
-                  Led by{' '}
-                  <Link href={`/workers/${meeting.conductedByWorker.id}`} className="hover:underline">
-                    {meeting.conductedByWorker.name}
-                  </Link>
-                </div>
-                <div className="mt-1 text-xs text-zinc-400">
-                  {meeting.attendees.length} attended
-                  {meeting.attendees.length > 0 && (
-                    <>
-                      :{' '}
-                      {meeting.attendees.map((a, index) => (
-                        <span key={a.worker.id}>
-                          {index > 0 && ', '}
-                          <Link href={`/workers/${a.worker.id}`} className="hover:underline">
-                            {a.worker.name}
-                          </Link>
-                        </span>
-                      ))}
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-            {safetyMeetings.length === 0 && <p className="py-2 text-sm text-zinc-500">No toolbox talks logged yet.</p>}
-          </ul>
+          <ToolboxTalkList
+            jobId={job.id}
+            meetings={safetyMeetings.map((meeting) => ({
+              id: meeting.id,
+              topic: meeting.topic,
+              meetingDate: meeting.meetingDate.toISOString(),
+              conductedByWorker: { id: meeting.conductedByWorker.id, name: meeting.conductedByWorker.name },
+              attendees: meeting.attendees.map((a) => ({ worker: { id: a.worker.id, name: a.worker.name } })),
+            }))}
+          />
           <ToolboxTalkForm jobId={job.id} crew={crewOnJob} />
         </div>
       </div>
