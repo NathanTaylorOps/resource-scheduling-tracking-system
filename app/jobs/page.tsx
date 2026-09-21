@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
+import { CreateJobForm } from '@/components/CreateJobForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ export default async function JobsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
+      <CreateJobForm />
 
       {/* Below sm: a table with five columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-
