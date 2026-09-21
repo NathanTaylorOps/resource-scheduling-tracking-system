@@ -2,7 +2,7 @@
   "name": "resource-scheduling-tracking-system",
   "version": "0.1.0",
   "private": true,
-  "description": "Field operations and resource-management platform for a custom-home general contractor: crew scheduling, QR-tagged equipment tracking, worker and equipment compliance, preventive maintenance, and a two-layer honest weather-risk overlay.",
+  "description": "Field-operations and resource-management platform for a custom-home general contractor: crew scheduling and staffing plans, QR-tagged equipment tracking and reservations, worker/subcontractor/equipment compliance, permits and inspections, preventive maintenance, daily field documentation, and a two-layer honest weather-risk overlay.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
