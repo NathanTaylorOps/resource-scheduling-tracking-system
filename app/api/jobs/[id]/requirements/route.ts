@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 interface CreateRequirementBody {
   roleOrTrade: string;
   requiredCount?: number;
+  requiredCertTypes?: string;
 }
 
 /**
@@ -12,6 +13,11 @@ interface CreateRequirementBody {
  * elsewhere (see findUnfilledRoles in lib/domain/scheduling.ts), so the
  * value typed here has to match how crew actually get assigned on this job,
  * the same plan-versus-actual pattern the README describes.
+ *
+ * requiredCertTypes is optional and stored as-is (a comma-separated string —
+ * see the field's own comment in schema.prisma); it's what the assignment
+ * route (app/api/jobs/[id]/assignments) checks a worker against via
+ * canAssignWorker when someone's assigned to this role.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const job = await prisma.job.findUnique({ where: { id: params.id } });
@@ -36,7 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 
   const requirement = await prisma.jobRoleRequirement.create({
-    data: { jobId: job.id, roleOrTrade, requiredCount },
+    data: { jobId: job.id, roleOrTrade, requiredCount, requiredCertTypes: body.requiredCertTypes?.trim() || null },
   });
 
   return NextResponse.json({ id: requirement.id }, { status: 201 });

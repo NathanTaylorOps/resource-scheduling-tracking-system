@@ -9,6 +9,7 @@ import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WeatherPanel } from '@/components/WeatherPanel';
 import { JobRequirementsEditor } from '@/components/JobRequirementsEditor';
+import { AssignWorkerForm } from '@/components/AssignWorkerForm';
 import { PermitsEditor } from '@/components/PermitsEditor';
 import { DailyLogForm } from '@/components/DailyLogForm';
 import { ToolboxTalkForm } from '@/components/ToolboxTalkForm';
@@ -35,6 +36,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const equipment = await prisma.equipment.findMany({
     where: { currentJobId: job.id },
     include: { compliance: true },
+  });
+
+  // Every worker on file, for the assign-crew picker below — not scoped to
+  // this job (or to whoever's already assigned), since assigning someone
+  // new to a job is exactly the case that picker exists for.
+  const allWorkers = await prisma.worker.findMany({
+    select: { id: true, name: true, trade: true },
+    orderBy: { name: 'asc' },
   });
 
   const readiness = await computeJobReadiness(job.id);
@@ -271,6 +280,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             })}
             {job.assignments.length === 0 && <p className="py-2 text-sm text-zinc-500">No crew assigned yet.</p>}
           </ul>
+          <AssignWorkerForm jobId={job.id} workers={allWorkers} />
         </div>
 
         {/* Equipment */}
@@ -301,7 +311,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <h2 className="mb-3 font-semibold">Crew requirements</h2>
           <JobRequirementsEditor
             jobId={job.id}
-            requirements={roleRequirements.map((r) => ({ id: r.id, roleOrTrade: r.roleOrTrade, requiredCount: r.requiredCount }))}
+            requirements={roleRequirements.map((r) => ({ id: r.id, roleOrTrade: r.roleOrTrade, requiredCount: r.requiredCount, requiredCertTypes: r.requiredCertTypes }))}
             assignedCountByRole={Object.fromEntries(assignedCountByRole)}
           />
         </div>

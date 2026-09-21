@@ -9,6 +9,7 @@ interface Requirement {
   id: string;
   roleOrTrade: string;
   requiredCount: number;
+  requiredCertTypes: string | null;
 }
 
 interface JobRequirementsEditorProps {
@@ -27,6 +28,7 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
   const router = useRouter();
   const [roleOrTrade, setRoleOrTrade] = useState('');
   const [requiredCount, setRequiredCount] = useState(1);
+  const [requiredCertTypes, setRequiredCertTypes] = useState('');
   const [pending, setPending] = useState<string | null>(null); // 'add' | a requirement id | null
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +44,7 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
       const response = await fetch(`/api/jobs/${jobId}/requirements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleOrTrade: roleOrTrade.trim(), requiredCount }),
+        body: JSON.stringify({ roleOrTrade: roleOrTrade.trim(), requiredCount, requiredCertTypes: requiredCertTypes.trim() || undefined }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
@@ -50,6 +52,7 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
       }
       setRoleOrTrade('');
       setRequiredCount(1);
+      setRequiredCertTypes('');
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add that requirement.');
@@ -86,6 +89,9 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
               <div>
                 <div className="font-medium">{r.roleOrTrade}</div>
                 <div className="text-xs text-zinc-500">{assignedCount} of {r.requiredCount} assigned</div>
+                {r.requiredCertTypes && (
+                  <div className="text-xs text-zinc-400">Requires: {r.requiredCertTypes}</div>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={met ? 'ok' : 'warning'} label={met ? 'Filled' : 'Unfilled'} />
@@ -131,6 +137,18 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
             className="w-full rounded-md border border-outdoor-border px-2.5 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
           />
         </div>
+        <div className="min-w-[180px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-zinc-600" htmlFor="req-certs">
+            Required certifications (optional)
+          </label>
+          <input
+            id="req-certs"
+            value={requiredCertTypes}
+            onChange={(event) => setRequiredCertTypes(event.target.value)}
+            placeholder="Comma-separated, e.g. OSHA 10, Master Electrician License"
+            className="w-full rounded-md border border-outdoor-border px-2.5 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
+          />
+        </div>
         <button
           type="submit"
           disabled={pending === 'add'}
@@ -140,6 +158,10 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
         </button>
       </form>
       {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      <p className="mt-2 text-xs text-zinc-400">
+        Required certifications must match a worker&rsquo;s certification type exactly (case-sensitive) to gate an
+        assignment — see the worker&rsquo;s certification records for the exact values on file.
+      </p>
     </div>
   );
 }

@@ -196,13 +196,23 @@ model WorkerCertification {
 // already on the job. roleOrTrade is matched against Assignment.roleOnJob
 // by exact string, the same way a real staffing plan names a role rather
 // than a fuzzy trade category — see findUnfilledRoles in lib/domain/scheduling.ts.
+//
+// requiredCertTypes is the source canAssignWorker (lib/domain/certifications.ts)
+// gates against when someone's assigned to this role: a comma-separated list
+// of certType values, matched the same exact-string way roleOrTrade itself
+// is, and optional — most roles don't require a listed certification at all.
+// It lives on the requirement rather than on Assignment because it's a
+// property of the role ("an Electrician needs an Electrical License"), not
+// of any one person filling it, so it only needs to be entered once per role
+// rather than re-typed for every worker assigned against it.
 model JobRoleRequirement {
-  id            String @id @default(cuid())
-  jobId         String
-  roleOrTrade   String
-  requiredCount Int    @default(1)
+  id                String  @id @default(cuid())
+  jobId             String
+  roleOrTrade       String
+  requiredCount     Int     @default(1)
+  requiredCertTypes String?
 
-  job           Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job               Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
 }
