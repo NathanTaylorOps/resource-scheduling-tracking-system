@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { EquipmentStatus } from '@/lib/enums';
 
@@ -11,6 +12,7 @@ interface CreateEquipmentBody {
 }
 
 const QR_PREFIX = 'CW-EQ-';
+const MAX_QR_RETRIES = 1;
 
 /** Next sequential asset tag after whatever's already on file, matching the
  * CW-EQ-0001 style every seed asset already uses. Issuing the tag here
@@ -29,6 +31,10 @@ async function nextQrCode(): Promise<string> {
     return Math.max(max, parseInt(match[1], 10));
   }, 0);
   return `${QR_PREFIX}${String(maxNumber + 1).padStart(4, '0')}`;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 export async function POST(request: NextRequest) {
@@ -52,12 +58,29 @@ export async function POST(request: NextRequest) {
   if (Number.isNaN(acquisitionDate.getTime()) || Number.isNaN(inServiceDate.getTime())) {
     return NextResponse.json({ error: 'Enter valid acquisition and in-service dates.' }, { status: 400 });
   }
+  if (inServiceDate.getTime() < acquisitionDate.getTime()) {
+    return NextResponse.json({ error: "In-service date can't be before the acquisition date." }, { status: 400 });
+  }
   const status = body.status && Object.values(EquipmentStatus).includes(body.status as EquipmentStatus) ? body.status : EquipmentStatus.ACTIVE;
 
-  const qrCode = await nextQrCode();
-  const equipment = await prisma.equipment.create({
-    data: { name, category, qrCode, status, acquisitionDate, inServiceDate },
-  });
-
-  return NextResponse.json({ id: equipment.id, qrCode: equipment.qrCode }, { status: 201 });
+  // Computing the next tag and creating the record are two separate steps —
+  // low odds of two requests racing between them in a single-user local
+  // tool, but cheap to make safe rather than assumed away: on the unique-
+  // constraint failure that race would cause, recompute the max (which by
+  // then includes whichever request won) and try once more, rather than
+  // surfacing a raw 500 for what's really a retryable scheduling accident.
+  for (let attempt = 0; attempt <= MAX_QR_RETRIES; attempt++) {
+    const qrCode = await nextQrCode();
+    try {
+      const equipment = await prisma.equipment.create({
+        data: { name, category, qrCode, status, acquisitionDate, inServiceDate },
+      });
+      return NextResponse.json({ id: equipment.id, qrCode: equipment.qrCode }, { status: 201 });
+    } catch (error) {
+      if (!isUniqueConstraintError(error) || attempt === MAX_QR_RETRIES) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('Unreachable: the retry loop above always returns or re-throws.');
 }
