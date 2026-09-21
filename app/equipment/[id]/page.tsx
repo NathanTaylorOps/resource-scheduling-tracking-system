@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { resolveCounterValue } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
+import { computeDailyUsageRate, forecastDaysUntilDue } from '@/lib/domain/forecasting';
 import { excludeCoveredChildren, type MaintenancePlan as DomainMaintenancePlan } from '@/lib/domain/maintenance';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WorkOrderCompleteButton } from '@/components/WorkOrderCompleteButton';
@@ -74,6 +75,23 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
                 )
               : null;
             const status = !result ? 'warning' : result.status === 'overdue' ? 'blocked' : result.status === 'ok' ? 'ok' : 'warning';
+
+            // Usage-based forecast for anything running on a meter rather
+            // than the calendar. This is a lifetime average, not a recent
+            // trend — the honest number available without a usage-logging
+            // feature that records dated readings over time (see README).
+            const forecastDays =
+              c.counterType !== 'CALENDAR_DAYS' && currentValue !== null && result?.status !== 'overdue'
+                ? forecastDaysUntilDue(
+                    c.dueValue,
+                    currentValue,
+                    computeDailyUsageRate([
+                      { date: equipment.inServiceDate, counterValue: 0 },
+                      { date: now, counterValue: currentValue },
+                    ]),
+                  )
+                : null;
+
             return (
               <li key={c.id} className="flex items-center justify-between py-2">
                 <div>
@@ -84,6 +102,9 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
                     {!c.hardLimit && ` · ${c.toleranceValue} ${unitLabel(c.counterType)} tolerance`}
                     {currentValue !== null && ` · currently at ${Math.round(currentValue)} ${unitLabel(c.counterType)}`}
                   </div>
+                  {forecastDays !== null && (
+                    <div className="text-xs text-zinc-400">At lifetime-average pace, due in ~{Math.round(forecastDays)} days</div>
+                  )}
                 </div>
                 <StatusBadge
                   status={status}
