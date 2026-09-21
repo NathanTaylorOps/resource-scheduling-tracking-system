@@ -114,8 +114,14 @@ async function main() {
     prisma.worker.create({ data: { name: 'Renata Cho', trade: 'Plumber', employmentType: EmploymentType.SUBCONTRACTOR, hireDate: daysAgo(480) } }),
     prisma.worker.create({ data: { name: 'Big Sam Okonkwo', trade: 'Heavy Equipment Operator', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(650) } }),
     prisma.worker.create({ data: { name: 'Jules Whitfield', trade: 'Laborer', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(150) } }),
+    // Project managers run multiple sites at once rather than living on one
+    // job the way a superintendent does — that's why their vehicles, phones,
+    // and laptops below are field-assigned equipment (tracked by custody,
+    // currentWorkerId) rather than job-site equipment tied to one currentJobId.
+    prisma.worker.create({ data: { name: 'Renee Castellanos', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(560) } }),
+    prisma.worker.create({ data: { name: 'Kenji Osei', trade: 'Project Manager', employmentType: EmploymentType.DIRECT_EMPLOYEE, hireDate: daysAgo(410) } }),
   ]);
-  const [dale, marcus, priya, ollie, teo, renata, bigSam, jules] = workers;
+  const [dale, marcus, priya, ollie, teo, renata, bigSam, jules, renee, kenji] = workers;
 
   // Certifications — a deliberate spread of valid, expiring-soon, and
   // expired so the dashboard has something real to flag.
@@ -129,6 +135,8 @@ async function main() {
       { workerId: bigSam.id, certType: 'Forklift Operator', issuingBody: 'Coastwood Internal Training', issueDate: daysAgo(300), expiryDate: daysFromNow(45) },
       { workerId: bigSam.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(800), expiryDate: daysFromNow(700) },
       { workerId: jules.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(120), expiryDate: daysFromNow(1100) },
+      { workerId: renee.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(560), expiryDate: daysFromNow(280) },
+      { workerId: kenji.id, certType: 'OSHA 30', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(410), expiryDate: daysFromNow(450) },
     ],
   });
 
@@ -148,6 +156,11 @@ async function main() {
       { workerId: renata.id, jobId: mapleCrossing.id, roleOnJob: 'Plumber', start: daysAgo(20), end: daysFromNow(10) },
       { workerId: bigSam.id, jobId: mapleCrossing.id, roleOnJob: 'Heavy Equipment Operator', start: daysAgo(10), end: daysFromNow(5) },
       { workerId: jules.id, jobId: mapleCrossing.id, roleOnJob: 'Laborer', start: daysAgo(30), end: daysFromNow(30) },
+      { workerId: renee.id, jobId: cedarHollow.id, roleOnJob: 'Project Manager', start: daysAgo(45), end: daysFromNow(120) },
+      { workerId: renee.id, jobId: orchardRidge.id, roleOnJob: 'Project Manager', start: daysFromNow(14), end: daysFromNow(280) },
+      { workerId: kenji.id, jobId: harborPoint.id, roleOnJob: 'Project Manager', start: daysAgo(20), end: daysFromNow(60) },
+      { workerId: kenji.id, jobId: mapleCrossing.id, roleOnJob: 'Project Manager', start: daysAgo(90), end: daysFromNow(30) },
+      { workerId: kenji.id, jobId: lakeview.id, roleOnJob: 'Project Manager', start: daysAgo(10), end: daysFromNow(75) },
     ],
   });
 
@@ -239,6 +252,267 @@ async function main() {
   });
 
   // ---------------------------------------------------------------------
+  // Equipment — expanded fleet reflecting what actually rides to a
+  // Coastwood site day to day: battery and pneumatic trade tools, layout
+  // and reality-capture gear, a broader earthmoving line (the same
+  // machines that do site grading also do pond excavation and liner-bed
+  // compaction — there's no separate "pond" equipment category, just the
+  // same iron doing both jobs), and the vehicles/phones/laptops carried
+  // by PMs running more than one site at once.
+  // ---------------------------------------------------------------------
+
+  // Battery-powered trade tools — tracked as crew kits (drill/driver,
+  // impact driver, circular saw, recip saw in a rolling case) rather than
+  // individually. That's both how they're actually issued in the field
+  // and the reason they're worth QR-tagging at all: a loose battery tool
+  // walks off a site far more easily than the kit case it usually lives in.
+  const batteryKit1 = await prisma.equipment.create({
+    data: {
+      name: 'Battery Tool Kit — Crew 1',
+      category: 'Battery-Powered Tools',
+      qrCode: 'CW-EQ-0019',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(260),
+      inServiceDate: daysAgo(255),
+      currentJobId: cedarHollow.id,
+      currentWorkerId: marcus.id,
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 255 }] },
+    },
+  });
+  const batteryKit2 = await prisma.equipment.create({
+    data: {
+      name: 'Battery Tool Kit — Crew 2',
+      category: 'Battery-Powered Tools',
+      qrCode: 'CW-EQ-0020',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(150),
+      inServiceDate: daysAgo(145),
+      currentJobId: mapleCrossing.id,
+      currentWorkerId: jules.id,
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 145 }] },
+    },
+  });
+
+  // Pneumatic tools run off the yard's air compressors — framing and
+  // finish nailers are tracked as sets for the same reason the battery
+  // kits are.
+  const pneumaticFraming = await prisma.equipment.create({
+    data: {
+      name: 'Pneumatic Framing Nailer Set — Unit 1',
+      category: 'Pneumatic Tools',
+      qrCode: 'CW-EQ-0021',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(400),
+      inServiceDate: daysAgo(395),
+      currentJobId: cedarHollow.id,
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 395 }] },
+    },
+  });
+  const pneumaticFinish = await prisma.equipment.create({
+    data: {
+      name: 'Pneumatic Finish Nailer Set — Unit 2',
+      category: 'Pneumatic Tools',
+      qrCode: 'CW-EQ-0022',
+      status: EquipmentStatus.IDLE,
+      acquisitionDate: daysAgo(400),
+      inServiceDate: daysAgo(395),
+      locationNote: 'Yard — Bay 1',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 395 }] },
+    },
+  });
+
+  // Layout and reality-capture gear. The laser levels ride with whichever
+  // job is mid-layout; the scanner and thermal camera are pooled, shared
+  // specialty equipment checked out per site visit rather than assigned to
+  // one job for the length of the build.
+  const rotaryLaser = await prisma.equipment.create({
+    data: {
+      name: 'Rotary Laser Level — Unit 1',
+      category: 'Layout & Survey Equipment',
+      qrCode: 'CW-EQ-0023',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(500),
+      inServiceDate: daysAgo(495),
+      currentJobId: cedarHollow.id,
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 495 }] },
+    },
+  });
+  const lineLaser = await prisma.equipment.create({
+    data: {
+      name: 'Line Laser Level — Unit 2',
+      category: 'Layout & Survey Equipment',
+      qrCode: 'CW-EQ-0024',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(320),
+      inServiceDate: daysAgo(315),
+      currentJobId: harborPoint.id,
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 315 }] },
+    },
+  });
+  const scanner3d = await prisma.equipment.create({
+    data: {
+      name: '3D Reality-Capture Scanner — Unit 1',
+      category: 'Layout & Survey Equipment',
+      qrCode: 'CW-EQ-0025',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(180),
+      inServiceDate: daysAgo(175),
+      locationNote: 'Yard — Equipment Cage (pooled — checked out per site visit)',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 175 }] },
+    },
+  });
+  const irCamera = await prisma.equipment.create({
+    data: {
+      name: 'Thermal Imaging Camera — Unit 1',
+      category: 'Layout & Survey Equipment',
+      qrCode: 'CW-EQ-0026',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(180),
+      inServiceDate: daysAgo(175),
+      locationNote: 'Yard — Equipment Cage (pooled — checked out per site visit)',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 175 }] },
+    },
+  });
+
+  // Earthmoving. The skid steer, track loader, and plate compactor are the
+  // same machines whether the job that week is site grading, foundation
+  // backfill, or pond excavation and liner-bed compaction — that's a
+  // scheduling and utilization question, not a reason to model a separate
+  // equipment category.
+  const skidSteer = await prisma.equipment.create({
+    data: {
+      name: 'Skid Steer Loader — Unit 4',
+      category: 'Heavy Equipment',
+      qrCode: 'CW-EQ-0027',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(600),
+      inServiceDate: daysAgo(595),
+      currentJobId: cedarHollow.id,
+      lifeCounters: { create: [{ counterType: CounterType.RUN_HOURS, currentValue: 740 }] },
+    },
+  });
+  const trackLoader = await prisma.equipment.create({
+    data: {
+      name: 'Compact Track Loader — Unit 5',
+      category: 'Heavy Equipment',
+      qrCode: 'CW-EQ-0028',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(340),
+      inServiceDate: daysAgo(335),
+      currentJobId: harborPoint.id,
+      lifeCounters: { create: [{ counterType: CounterType.RUN_HOURS, currentValue: 410 }] },
+    },
+  });
+  const plateCompactor = await prisma.equipment.create({
+    data: {
+      name: 'Plate Compactor — Unit 1',
+      category: 'Heavy Equipment',
+      qrCode: 'CW-EQ-0029',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(430),
+      inServiceDate: daysAgo(425),
+      currentJobId: cedarHollow.id,
+      lifeCounters: { create: [{ counterType: CounterType.RUN_HOURS, currentValue: 260 }] },
+    },
+  });
+  const dumpTrailer = await prisma.equipment.create({
+    data: {
+      name: 'Dump Trailer — T-6',
+      category: 'Vehicles & Trailers',
+      qrCode: 'CW-EQ-0030',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(720),
+      inServiceDate: daysAgo(715),
+      currentJobId: mapleCrossing.id,
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 715 }] },
+    },
+  });
+
+  // PM-assigned vehicles, phones, and laptops. Custody (currentWorkerId)
+  // rather than a job assignment is the honest model here — a PM running
+  // multiple sites doesn't "check out" a truck to one of them, it's just
+  // with them all week, which is also why none of these carry a
+  // currentJobId the way job-site equipment does.
+  const pmTruck1 = await prisma.equipment.create({
+    data: {
+      name: 'PM Field Truck — V-1',
+      category: 'Vehicles & Trailers',
+      qrCode: 'CW-EQ-0031',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(560),
+      inServiceDate: daysAgo(555),
+      currentWorkerId: renee.id,
+      locationNote: 'With Renee Castellanos — rotates Cedar Hollow / Orchard Ridge',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 555 }] },
+    },
+  });
+  const pmTruck2 = await prisma.equipment.create({
+    data: {
+      name: 'PM Field Truck — V-2',
+      category: 'Vehicles & Trailers',
+      qrCode: 'CW-EQ-0032',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(410),
+      inServiceDate: daysAgo(405),
+      currentWorkerId: kenji.id,
+      locationNote: 'With Kenji Osei — rotates Harbor Point / Maple Crossing / Lakeview',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 405 }] },
+    },
+  });
+  const pmPhone1 = await prisma.equipment.create({
+    data: {
+      name: 'PM Mobile Phone — Device 1',
+      category: 'Technology & Devices',
+      qrCode: 'CW-EQ-0033',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(560),
+      inServiceDate: daysAgo(555),
+      currentWorkerId: renee.id,
+      locationNote: 'With Renee Castellanos',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 555 }] },
+    },
+  });
+  const pmPhone2 = await prisma.equipment.create({
+    data: {
+      name: 'PM Mobile Phone — Device 2',
+      category: 'Technology & Devices',
+      qrCode: 'CW-EQ-0034',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(410),
+      inServiceDate: daysAgo(405),
+      currentWorkerId: kenji.id,
+      locationNote: 'With Kenji Osei',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 405 }] },
+    },
+  });
+  const pmLaptop1 = await prisma.equipment.create({
+    data: {
+      name: 'PM Laptop — Device 1',
+      category: 'Technology & Devices',
+      qrCode: 'CW-EQ-0035',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(560),
+      inServiceDate: daysAgo(555),
+      currentWorkerId: renee.id,
+      locationNote: 'With Renee Castellanos',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 555 }] },
+    },
+  });
+  const pmLaptop2 = await prisma.equipment.create({
+    data: {
+      name: 'PM Laptop — Device 2',
+      category: 'Technology & Devices',
+      qrCode: 'CW-EQ-0036',
+      status: EquipmentStatus.ACTIVE,
+      acquisitionDate: daysAgo(410),
+      inServiceDate: daysAgo(405),
+      currentWorkerId: kenji.id,
+      locationNote: 'With Kenji Osei',
+      lifeCounters: { create: [{ counterType: CounterType.CALENDAR_DAYS, currentValue: 405 }] },
+    },
+  });
+
+  // ---------------------------------------------------------------------
   // Equipment compliance — deliberately covering: an item currently
   // in-tolerance, one overdue, one safety-critical hard limit, and one
   // multi-counter (hours + calendar) item to show whichever-comes-first.
@@ -259,6 +533,20 @@ async function main() {
       { equipmentId: compressor.id, complianceType: ComplianceType.CALIBRATION, counterType: CounterType.RUN_HOURS, intervalValue: 800, toleranceValue: 40, hardLimit: false, dueValue: 800, lastCompletedAt: daysAgo(600), lastCompletedValue: 0 },
       // Trailer: annual DOT-style inspection, well within schedule.
       { equipmentId: trailer.id, complianceType: ComplianceType.INSPECTION, counterType: CounterType.CALENDAR_DAYS, intervalValue: 365, toleranceValue: 14, hardLimit: false, dueValue: 1095 + 270, lastCompletedAt: daysAgo(95), lastCompletedValue: 1000 },
+    ],
+  });
+  await prisma.equipmentCompliance.createMany({
+    data: [
+      // Skid steer: 250-run-hour service interval, currently 10 hours out
+      // from due — the same due-soon shape as the generator above.
+      { equipmentId: skidSteer.id, complianceType: ComplianceType.INSPECTION, counterType: CounterType.RUN_HOURS, intervalValue: 250, toleranceValue: 20, hardLimit: false, dueValue: 750, lastCompletedAt: daysAgo(150), lastCompletedValue: 500 },
+      // PM phone: manufacturer warranty tracked the same way a hard-limit
+      // safety item is — no grace once it lapses. Comfortably current.
+      { equipmentId: pmPhone1.id, complianceType: ComplianceType.WARRANTY, counterType: CounterType.CALENDAR_DAYS, intervalValue: 730, toleranceValue: 0, hardLimit: true, dueValue: 730, lastCompletedAt: daysAgo(560), lastCompletedValue: 0 },
+      // PM laptop: same warranty pattern, deliberately past it — an
+      // expired-warranty flag a GM actually wants ahead of budgeting a
+      // replacement, not something that blocks anything operational.
+      { equipmentId: pmLaptop2.id, complianceType: ComplianceType.WARRANTY, counterType: CounterType.CALENDAR_DAYS, intervalValue: 365, toleranceValue: 0, hardLimit: true, dueValue: 365, lastCompletedAt: daysAgo(410), lastCompletedValue: 0 },
     ],
   });
 
@@ -329,10 +617,16 @@ async function main() {
     data: [
       { equipmentId: trailer.id, scannedByWorkerId: teo.id, jobId: harborPoint.id, action: ScanAction.CHECK_OUT, timestamp: daysAgo(15), latitude: 47.9789, longitude: -122.2021 },
       { equipmentId: excavator.id, scannedByWorkerId: bigSam.id, jobId: mapleCrossing.id, action: ScanAction.CHECK_OUT, timestamp: daysAgo(10), latitude: 47.7623, longitude: -122.2054 },
+      // The pooled scanner actually moving between sites — the kind of
+      // history that's the point of tracking a shared asset by scan rather
+      // than by a single currentJobId.
+      { equipmentId: scanner3d.id, scannedByWorkerId: renee.id, jobId: cedarHollow.id, action: ScanAction.CHECK_OUT, timestamp: daysAgo(3), latitude: 47.9184, longitude: -122.0982 },
+      { equipmentId: dumpTrailer.id, scannedByWorkerId: bigSam.id, jobId: mapleCrossing.id, action: ScanAction.CHECK_OUT, timestamp: daysAgo(8), latitude: 47.7623, longitude: -122.2054 },
     ],
   });
 
-  console.log(`Seeded ${jobs.length} jobs, ${workers.length} workers, 6 equipment items.`);
+  const equipmentCount = await prisma.equipment.count();
+  console.log(`Seeded ${jobs.length} jobs, ${workers.length} workers, ${equipmentCount} equipment items.`);
 }
 
 main()
