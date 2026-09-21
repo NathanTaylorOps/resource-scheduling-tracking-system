@@ -30,7 +30,7 @@ export default async function SubcontractorDetailPage({ params }: { params: { id
       <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline">
         ← Subcontractor firms
       </Link>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{subcontractor.businessName}</h1>
           <p className="text-sm text-zinc-500">{subcontractor.trade}</p>

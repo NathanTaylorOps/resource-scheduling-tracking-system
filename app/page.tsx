@@ -42,19 +42,19 @@ export default async function DashboardPage() {
             <Link
               key={job.id}
               href={`/jobs/${job.id}`}
-              className="card flex items-center justify-between transition hover:border-zinc-400"
+              className="card flex flex-col gap-3 transition hover:border-zinc-400 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
                 <div className="font-semibold">{job.name}</div>
                 <div className="text-sm text-zinc-500">{job.address}</div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 <ComponentPill label="Crew" status={readiness.crew} />
                 <ComponentPill label="Equip." status={readiness.equipment} />
                 <ComponentPill label="Compl." status={readiness.compliance} />
                 <ComponentPill label="Weather" status={readiness.weather} />
                 <ComponentPill label="Permits" status={readiness.permits} />
-                <div className="ml-3">
+                <div className="sm:ml-3">
                   <StatusBadge status={readiness.overall} label={readiness.overall === 'ok' ? 'Ready' : readiness.overall === 'warning' ? 'Attention' : 'Blocked'} />
                 </div>
               </div>

@@ -141,7 +141,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <Link href="/jobs" className="text-sm text-zinc-500 hover:underline">
           ← Jobs
         </Link>
-        <div className="mt-1 flex items-center justify-between">
+        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{job.name}</h1>
             <p className="text-sm text-zinc-500">{job.address}</p>
