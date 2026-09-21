@@ -32,6 +32,12 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const overlapInput: OverlapAssignment[] = allAssignments.map((a) => ({ id: a.id, workerId: a.workerId, jobId: a.jobId, start: a.start, end: a.end }));
   const conflicts = findOverlaps(overlapInput).filter((c) => c.first.jobId === job.id || c.second.jobId === job.id);
 
+  // findOverlaps only pairs a worker against their own other assignments, so
+  // the worker behind any conflict on this job is always someone already in
+  // job.assignments — named here rather than surfacing their raw worker id.
+  const workerNameById = new Map(job.assignments.map((a) => [a.worker.id, a.worker.name]));
+  const conflictedWorkerNames = [...new Set(conflicts.map((c) => workerNameById.get(c.first.workerId) ?? 'A crew member'))];
+
   const now = new Date();
 
   return (
@@ -60,8 +66,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         </div>
         {conflicts.length > 0 && (
           <p className="mt-3 text-sm text-red-700">
-            Scheduling conflict: {conflicts.map((c) => c.first.workerId).join(', ')} — a crew member on this job is
-            also booked on another job during an overlapping window.
+            Scheduling conflict: {conflictedWorkerNames.join(', ')} — assigned to two jobs at once during an
+            overlapping window.
           </p>
         )}
       </div>
