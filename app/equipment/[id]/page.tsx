@@ -273,7 +273,21 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
               </div>
               <div className="flex flex-wrap items-center gap-x-2 text-xs text-zinc-500">
                 <span>
-                  {scan.scannedBy?.name ?? 'Unknown'} {scan.job ? `· ${scan.job.name}` : ''}
+                  {scan.scannedBy ? (
+                    <Link href={`/workers/${scan.scannedBy.id}`} className="hover:underline">
+                      {scan.scannedBy.name}
+                    </Link>
+                  ) : (
+                    'Unknown'
+                  )}{' '}
+                  {scan.job && (
+                    <>
+                      ·{' '}
+                      <Link href={`/jobs/${scan.job.id}`} className="hover:underline">
+                        {scan.job.name}
+                      </Link>
+                    </>
+                  )}
                 </span>
                 {scan.latitude !== null && scan.longitude !== null && (
                   <a

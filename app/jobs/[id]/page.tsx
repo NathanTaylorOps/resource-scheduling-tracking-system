@@ -388,7 +388,16 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                 </div>
                 <p className="mt-1 text-sm text-zinc-700">{log.workPerformed}</p>
                 {log.delaysNotes && <p className="mt-1 text-xs text-amber-700">Delay: {log.delaysNotes}</p>}
-                <div className="mt-1 text-xs text-zinc-400">Logged by {log.submittedByWorker?.name ?? 'Unattributed'}</div>
+                <div className="mt-1 text-xs text-zinc-400">
+                  Logged by{' '}
+                  {log.submittedByWorker ? (
+                    <Link href={`/workers/${log.submittedByWorker.id}`} className="hover:underline">
+                      {log.submittedByWorker.name}
+                    </Link>
+                  ) : (
+                    'Unattributed'
+                  )}
+                </div>
               </li>
             ))}
             {dailyLogs.length === 0 && <p className="py-2 text-sm text-zinc-500">No daily logs submitted yet.</p>}
@@ -405,10 +414,27 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                   <span className="font-medium">{meeting.topic}</span>
                   <span className="text-xs text-zinc-500">{meeting.meetingDate.toLocaleDateString()}</span>
                 </div>
-                <div className="text-xs text-zinc-500">Led by {meeting.conductedByWorker.name}</div>
+                <div className="text-xs text-zinc-500">
+                  Led by{' '}
+                  <Link href={`/workers/${meeting.conductedByWorker.id}`} className="hover:underline">
+                    {meeting.conductedByWorker.name}
+                  </Link>
+                </div>
                 <div className="mt-1 text-xs text-zinc-400">
                   {meeting.attendees.length} attended
-                  {meeting.attendees.length > 0 && `: ${meeting.attendees.map((a) => a.worker.name).join(', ')}`}
+                  {meeting.attendees.length > 0 && (
+                    <>
+                      :{' '}
+                      {meeting.attendees.map((a, index) => (
+                        <span key={a.worker.id}>
+                          {index > 0 && ', '}
+                          <Link href={`/workers/${a.worker.id}`} className="hover:underline">
+                            {a.worker.name}
+                          </Link>
+                        </span>
+                      ))}
+                    </>
+                  )}
                 </div>
               </li>
             ))}
