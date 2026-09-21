@@ -18,12 +18,20 @@ interface CompleteWorkOrderBody {
  * A defect-sourced work order with no plan behind it just closes out, and
  * if it was the last thing keeping the asset down, clears DOWN_FOR_SERVICE.
  */
+class WorkOrderAlreadyCompletedError extends Error {}
+
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const workOrder = await prisma.workOrder.findUnique({ where: { id: params.id } });
   if (!workOrder) {
     return NextResponse.json({ error: 'Work order not found.' }, { status: 404 });
   }
   if (workOrder.status === WorkOrderStatus.COMPLETED) {
+    // Fast path only — a friendlier, immediate response for the common
+    // case (a stale page, a double-click) where there's obviously nothing
+    // to race against. The real guard against two *concurrent* completions
+    // is the atomic claim inside the transaction below; this check alone
+    // can't prevent that, since two requests can both read "not completed"
+    // here before either has written anything.
     return NextResponse.json({ error: 'This work order is already completed.' }, { status: 400 });
   }
 
@@ -39,6 +47,24 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      // Atomically claim this work order before doing anything else in the
+      // transaction — this is the actual concurrency guard, not the
+      // pre-transaction check above. The WHERE clause's status condition
+      // and the write happen as one statement, so of two transactions
+      // racing on the same work order, only the first to reach this line
+      // can match `status: { not: COMPLETED }`; by the time the second
+      // one's write is allowed to proceed, the row is already COMPLETED
+      // and it gets `count === 0` and bails out below — before either the
+      // maintenance-plan due-date math or the child-work-order cascade
+      // ever runs a second time.
+      const claim = await tx.workOrder.updateMany({
+        where: { id: workOrder.id, status: { not: WorkOrderStatus.COMPLETED } },
+        data: { status: WorkOrderStatus.COMPLETED, completedAt: now },
+      });
+      if (claim.count === 0) {
+        throw new WorkOrderAlreadyCompletedError('This work order was already completed by another request.');
+      }
+
       let completedAtValue: number | null = body.completedAtValue ?? null;
       const advancedPlans: Array<{ planId: string; dueValue: number }> = [];
 
@@ -90,11 +116,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         }
       }
 
+      // status/completedAt were already set atomically by the claim above;
+      // this just fills in the fields that depend on the hierarchy math
+      // that had to happen after the claim (completedAtValue may come from
+      // resolveCounterValue, which needs the claim to have already
+      // succeeded before it's safe to trust this request "owns" the
+      // completion).
       const updatedWorkOrder = await tx.workOrder.update({
         where: { id: workOrder.id },
         data: {
-          status: WorkOrderStatus.COMPLETED,
-          completedAt: now,
           completedAtValue: completedAtValue ?? undefined,
           description: body.notes?.trim()
             ? `${workOrder.description} — Completed: ${body.notes.trim()}`
@@ -118,6 +148,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     return NextResponse.json(result, { status: 200 });
   } catch (err) {
+    if (err instanceof WorkOrderAlreadyCompletedError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'The work order could not be completed.' },
       { status: 400 },
