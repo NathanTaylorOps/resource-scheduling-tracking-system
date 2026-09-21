@@ -5,6 +5,7 @@ import { getCertificationStatus } from '@/lib/domain/certifications';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { calculateUtilization } from '@/lib/domain/scheduling';
 import { StatusBadge, certificationBadge } from '@/components/StatusBadge';
+import { AddCertificationForm } from '@/components/AddCertificationForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +91,7 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
           })}
           {worker.certifications.length === 0 && <p className="py-2 text-sm text-zinc-500">No certifications on file.</p>}
         </ul>
+        <AddCertificationForm workerId={worker.id} />
       </div>
 
       {worker.subcontractor && subcontractorCompliance && (
