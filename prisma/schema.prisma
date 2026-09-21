@@ -1,0 +1,322 @@
+// Coastwood Builders — Field Operations Platform
+// Data model. See /docs or the project README for the design rationale
+// behind the compliance and maintenance tables in particular — they follow
+// aviation maintenance-records practice (multi-counter, non-cumulative
+// tolerance windows, hard limits) rather than the single-counter model used
+// by most construction equipment-tracking tools.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Jobs and crew
+// ---------------------------------------------------------------------------
+
+model Job {
+  id             String    @id @default(cuid())
+  name           String
+  address        String
+  latitude       Float
+  longitude      Float
+  status         JobStatus @default(PLANNING)
+  startDate      DateTime
+  targetEndDate  DateTime
+
+  // Simplified weather-sensitivity tagging for this first pass — the design
+  // doc describes tagging individual tasks (a pour, a roofing day, a crane
+  // lift) with their own thresholds. Tagging the job as a whole is the
+  // honest scope for v1; per-task tagging is a documented roadmap item.
+  weatherSensitivity WeatherSensitivity @default(CONDITIONAL)
+
+  assignments    Assignment[]
+  scanEvents     ScanEvent[]
+  weatherCache   WeatherCache[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+enum JobStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETE
+}
+
+enum WeatherSensitivity {
+  INSENSITIVE
+  CONDITIONAL
+  SENSITIVE
+}
+
+model Worker {
+  id             String         @id @default(cuid())
+  name           String
+  trade          String
+  employmentType EmploymentType @default(DIRECT_EMPLOYEE)
+  hireDate       DateTime
+  phone          String?
+  email          String?
+
+  assignments    Assignment[]
+  certifications WorkerCertification[]
+  scanEvents     ScanEvent[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+enum EmploymentType {
+  DIRECT_EMPLOYEE
+  SUBCONTRACTOR
+}
+
+model Assignment {
+  id         String   @id @default(cuid())
+  workerId   String
+  jobId      String
+  roleOnJob  String
+  start      DateTime
+  end        DateTime
+
+  worker     Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@index([workerId])
+  @@index([jobId])
+}
+
+model WorkerCertification {
+  id          String   @id @default(cuid())
+  workerId    String
+  certType    String
+  issuingBody String
+  issueDate   DateTime
+  expiryDate  DateTime
+  documentUrl String?
+
+  worker      Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workerId])
+}
+
+// ---------------------------------------------------------------------------
+// Equipment: identity, location, compliance, and maintenance
+// ---------------------------------------------------------------------------
+
+model Equipment {
+  id             String          @id @default(cuid())
+  name           String
+  category       String
+  qrCode         String          @unique
+  status         EquipmentStatus @default(ACTIVE)
+  acquisitionDate DateTime
+  inServiceDate  DateTime
+
+  // Current custody/location, updated by scan events.
+  currentJobId    String?
+  currentWorkerId String?
+  locationNote    String? // e.g. "Yard — Bay 3" when in storage rather than on a job
+
+  lifeCounters   EquipmentLifeCounter[]
+  compliance     EquipmentCompliance[]
+  maintenancePlans MaintenancePlan[]
+  workOrders     WorkOrder[]
+  scanEvents     ScanEvent[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+enum EquipmentStatus {
+  ACTIVE
+  IDLE
+  IN_TRANSIT
+  DOWN_FOR_SERVICE
+  RETIRED
+}
+
+// An asset can be tracked on more than one counter at once — a compressor
+// on both calendar age and run-hours, for instance. Each counter is its own
+// row so compliance and maintenance schedules can reference whichever one
+// actually governs them.
+model EquipmentLifeCounter {
+  id            String      @id @default(cuid())
+  equipmentId   String
+  counterType   CounterType
+  currentValue  Float
+  updatedAt     DateTime    @updatedAt
+
+  equipment     Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([equipmentId, counterType])
+}
+
+enum CounterType {
+  CALENDAR_DAYS
+  RUN_HOURS
+  CYCLES
+}
+
+// Calibration, inspection, and warranty tracking. The interval/tolerance/
+// hardLimit/dueValue fields implement the non-cumulative tolerance-window
+// pattern in lib/domain/compliance.ts.
+model EquipmentCompliance {
+  id                String          @id @default(cuid())
+  equipmentId       String
+  complianceType    ComplianceType
+  counterType       CounterType
+  intervalValue     Float
+  toleranceValue    Float
+  hardLimit         Boolean         @default(false)
+  dueValue          Float
+  lastCompletedAt   DateTime?
+  lastCompletedValue Float?
+  documentUrl       String?
+
+  equipment         Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([equipmentId])
+}
+
+enum ComplianceType {
+  CALIBRATION
+  INSPECTION
+  WARRANTY
+}
+
+// Preventive-maintenance plans. parentPlanId enables the nested-hierarchy
+// suppression logic in lib/domain/maintenance.ts — a 30-day plan nested
+// under a 90-day plan is satisfied when the 90-day plan is completed.
+model MaintenancePlan {
+  id             String            @id @default(cuid())
+  equipmentId    String
+  parentPlanId   String?
+  description    String
+  counterType    CounterType
+  intervalValue  Float
+  toleranceValue Float
+  hardLimit      Boolean           @default(false)
+  dueValue       Float
+
+  equipment      Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  parentPlan     MaintenancePlan?  @relation("PlanHierarchy", fields: [parentPlanId], references: [id])
+  childPlans     MaintenancePlan[] @relation("PlanHierarchy")
+  workOrders     WorkOrder[]
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([equipmentId])
+  @@index([parentPlanId])
+}
+
+model WorkOrder {
+  id                  String           @id @default(cuid())
+  equipmentId         String
+  maintenancePlanId   String?
+  source              WorkOrderSource
+  status              WorkOrderStatus  @default(OPEN)
+  description         String
+  completedAtValue    Float?
+  completedAt         DateTime?
+  createdFromScanEventId String?
+
+  equipment           Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  maintenancePlan      MaintenancePlan? @relation(fields: [maintenancePlanId], references: [id])
+
+  createdAt           DateTime         @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([equipmentId])
+}
+
+enum WorkOrderSource {
+  SCHEDULED
+  DEFECT_REPORTED
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+// Append-only QR scan / custody audit trail. Never updated in place — the
+// current location fields on Equipment are a projection of the latest scan,
+// but the full history stays here for chain-of-custody review.
+model ScanEvent {
+  id             String     @id @default(cuid())
+  equipmentId    String
+  scannedByWorkerId String?
+  jobId          String?
+  action         ScanAction
+  timestamp      DateTime   @default(now())
+  latitude       Float?
+  longitude      Float?
+  conditionNote  String?
+
+  equipment      Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  scannedBy      Worker?    @relation(fields: [scannedByWorkerId], references: [id])
+  job            Job?       @relation(fields: [jobId], references: [id])
+  photos         ScanPhoto[]
+
+  @@index([equipmentId])
+}
+
+enum ScanAction {
+  CHECK_OUT
+  CHECK_IN
+  LOCATION_UPDATE
+  DEFECT_REPORTED
+}
+
+model ScanPhoto {
+  id          String    @id @default(cuid())
+  scanEventId String
+  url         String
+  caption     String?
+
+  scanEvent   ScanEvent @relation(fields: [scanEventId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Weather
+// ---------------------------------------------------------------------------
+
+// One row per job per layer. The "forecast" layer holds the real 7-10 day
+// NWS forecast; the "outlook" layer holds the climatological/seasonal
+// framing beyond that window. Keeping them as separate rows (and separate
+// UI treatments) is what keeps the second layer honest — see
+// lib/weather/outlook.ts.
+model WeatherCache {
+  id         String      @id @default(cuid())
+  jobId      String
+  layer      WeatherLayer
+  dataJson   String
+  fetchedAt  DateTime    @default(now())
+  staleAfter DateTime
+
+  job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, layer])
+}
+
+enum WeatherLayer {
+  FORECAST
+  OUTLOOK
+}
