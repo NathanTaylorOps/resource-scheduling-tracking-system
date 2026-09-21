@@ -153,7 +153,7 @@ function AddPermitForm({ jobId, onDone, onCancel }: { jobId: string; onDone: () 
           Cancel
         </button>
       </div>
-      {error && <p className="text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     </form>
   );
 }
@@ -266,7 +266,7 @@ function AddInspectionForm({
       <button type="button" onClick={onCancel} className="text-xs text-zinc-500 hover:text-zinc-900">
         Cancel
       </button>
-      {error && <p className="w-full text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="w-full text-xs text-red-700">{error}</p>}
     </form>
   );
 }
@@ -431,7 +431,7 @@ function InspectionOutcomeForm({ inspection: i, onDone, onCancel }: { inspection
           Cancel
         </button>
       </div>
-      {error && <p className="text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-red-700">{error}</p>}
     </form>
   );
 }

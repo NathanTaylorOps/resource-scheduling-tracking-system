@@ -157,7 +157,7 @@ export function JobRequirementsEditor({ jobId, requirements, assignedCountByRole
           {pending === 'add' ? 'Adding…' : '+ Add'}
         </button>
       </form>
-      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
       <p className="mt-2 text-xs text-zinc-400">
         Required certifications must match a worker&rsquo;s certification type exactly (case-sensitive) to gate an
         assignment — see the worker&rsquo;s certification records for the exact values on file.

@@ -113,7 +113,7 @@ export function CreateEquipmentForm() {
         <button type="submit" disabled={submitting} className="field-btn bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50">
           {submitting ? 'Adding…' : 'Add asset'}
         </button>
-        {error && <p className="text-xs text-red-700">{error}</p>}
+        {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
       </div>
     </form>
   );

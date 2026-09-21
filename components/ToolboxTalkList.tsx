@@ -89,7 +89,7 @@ export function ToolboxTalkList({ jobId, meetings }: ToolboxTalkListProps) {
         ))}
         {meetings.length === 0 && <p className="py-2 text-sm text-zinc-500">No toolbox talks logged yet.</p>}
       </ul>
-      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
     </div>
   );
 }

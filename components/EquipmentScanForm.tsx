@@ -228,7 +228,7 @@ export function EquipmentScanForm({ equipmentId, jobs, workers }: EquipmentScanF
         {locationStatus === 'pending' && 'Checking device location…'}
       </p>
 
-      {error && <p className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
       <button
         type="submit"

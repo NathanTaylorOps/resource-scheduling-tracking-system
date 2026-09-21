@@ -160,7 +160,7 @@ export function EquipmentReservationsEditor({
           {pending === 'add' ? 'Booking…' : '+ Reserve'}
         </button>
       </form>
-      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
     </div>
   );
 }

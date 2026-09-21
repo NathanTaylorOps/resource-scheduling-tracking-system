@@ -152,7 +152,7 @@ export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWor
           Cancel
         </button>
       </div>
-      {error && <p className="text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     </form>
   );
 }
