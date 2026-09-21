@@ -207,9 +207,20 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <h2 className="mb-3 font-semibold">Crew assigned</h2>
           <ul className="divide-y divide-outdoor-border">
             {job.assignments.map((a) => {
-              const expiredOrSoon = a.worker.certifications.filter(
-                (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status !== 'valid',
+              const certStatuses = a.worker.certifications.map(
+                (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status,
               );
+              // A true expiry is a different severity than aging/expiring-
+              // soon/renewal-pending — collapsing all four into one amber
+              // "to review" count (as this used to) hides a genuinely lapsed
+              // credential behind the same soft wording a merely-aging OSHA
+              // card gets, unlike the subcontractor-compliance treatment
+              // just below, which has always kept expired and to-review
+              // separate.
+              const expiredCerts = certStatuses.filter((s) => s === 'expired').length;
+              const toReviewCerts = certStatuses.filter(
+                (s) => s === 'expiring_soon' || s === 'aging' || s === 'renewal_pending',
+              ).length;
               const subCompliance = a.worker.subcontractor
                 ? evaluateSubcontractorCompliance(
                     { licenseExpiryDate: a.worker.subcontractor.licenseExpiryDate, coiRecords: a.worker.subcontractor.coiRecords },
@@ -228,8 +239,11 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                     </div>
                   </div>
                   <div className="text-right">
-                    {expiredOrSoon.length > 0 && (
-                      <div className="text-xs font-medium text-amber-700">{expiredOrSoon.length} cert{expiredOrSoon.length > 1 ? 's' : ''} to review</div>
+                    {expiredCerts > 0 && (
+                      <div className="text-xs font-medium text-red-700">{expiredCerts} cert{expiredCerts > 1 ? 's' : ''} expired</div>
+                    )}
+                    {toReviewCerts > 0 && (
+                      <div className="text-xs font-medium text-amber-700">{toReviewCerts} cert{toReviewCerts > 1 ? 's' : ''} to review</div>
                     )}
                     {subCompliance?.hasExpiredItem && <div className="text-xs font-medium text-red-700">Firm compliance lapsed</div>}
                     {!subCompliance?.hasExpiredItem && subCompliance?.hasExpiringSoonItem && (
@@ -291,7 +305,15 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <div className="card">
           <h2 className="mb-3 font-semibold">Permits &amp; inspections</h2>
           <ul className="divide-y divide-outdoor-border">
-            {permits.map((p) => (
+            {permits.map((p) => {
+              // Same check the readiness banner above already uses for
+              // expiredPermits — a permit whose expiryDate has passed reads
+              // as expired here too, even before its stored status field
+              // has been updated to say so, so this badge can't show
+              // "Issued" in green on the same permit the banner is calling
+              // expired above it.
+              const isExpired = p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime());
+              return (
               <li key={p.id} className="py-2">
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -305,8 +327,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                     </div>
                   </div>
                   <StatusBadge
-                    status={p.status === 'EXPIRED' ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
-                    label={p.status.charAt(0) + p.status.slice(1).toLowerCase()}
+                    status={isExpired ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
+                    label={isExpired ? 'Expired' : p.status.charAt(0) + p.status.slice(1).toLowerCase()}
                   />
                 </div>
                 {p.inspections.length > 0 && (
@@ -323,7 +345,13 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                         </div>
                         {i.status === 'FAILED' && (i.correctionNotes || i.reinspectionScheduledDate) && (
                           <div className="mt-1 rounded border border-red-100 bg-red-50 px-2 py-1.5 text-zinc-600">
-                            {i.correctionNotes && <div>Correction needed: {i.correctionNotes}</div>}
+                            {/* "needed" only while there's no re-inspection booked yet — once
+                                one's on the calendar the correction itself has been made (or
+                                is in hand), and re-flagging it as still-outstanding here would
+                                be a false alarm sitting right next to its own resolution. */}
+                            {i.correctionNotes && (
+                              <div>{i.reinspectionScheduledDate ? 'Correction made' : 'Correction needed'}: {i.correctionNotes}</div>
+                            )}
                             {i.correctionResponsible && <div>Responsible: {i.correctionResponsible}</div>}
                             {i.reinspectionScheduledDate && (
                               <div>
@@ -338,7 +366,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                   </ul>
                 )}
               </li>
-            ))}
+              );
+            })}
             {permits.length === 0 && <p className="py-2 text-sm text-zinc-500">No permits filed for this job.</p>}
           </ul>
         </div>
