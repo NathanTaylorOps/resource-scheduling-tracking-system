@@ -7,12 +7,16 @@
  * superintendent actually needs answered before it becomes a problem: is
  * this asset booked to two jobs over an overlapping window?
  *
- * The algorithm is the same interval-sweep findOverlaps in scheduling.ts
- * uses for worker double-booking, applied to equipmentId instead of
- * workerId. Kept as its own module rather than a generalized version of
- * findOverlaps: a worker double-booking and an equipment double-booking read
- * as genuinely different situations to a superintendent, even though the
- * underlying interval math is identical.
+ * The algorithm is the same all-pairs interval-overlap check findOverlaps in
+ * scheduling.ts uses for worker double-booking, applied to equipmentId
+ * instead of workerId — every pair of an asset's reservations is compared,
+ * not just neighbors in start-time order, so a reservation nested inside a
+ * longer one is still caught. Kept as its own module rather than a
+ * generalized version of findOverlaps: a worker double-booking and an
+ * equipment double-booking read as genuinely different situations to a
+ * superintendent, even though the underlying interval math is identical, and
+ * unlike a worker's roleOnJob, no reservation here is ever exempt — an asset
+ * can't be on two jobs at once regardless of what either job needs it for.
  */
 
 export interface EquipmentReservation {
@@ -43,13 +47,15 @@ export function findEquipmentConflicts(
   const conflicts: EquipmentReservationConflict[] = [];
 
   for (const [equipmentId, list] of byEquipment) {
-    const sorted = [...list].sort((a, b) => a.start.getTime() - b.start.getTime());
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        const overlaps = a.start.getTime() < b.end.getTime() && b.start.getTime() < a.end.getTime();
+        if (!overlaps) continue;
 
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const current = sorted[i];
-      const next = sorted[i + 1];
-      if (next.start.getTime() < current.end.getTime()) {
-        conflicts.push({ equipmentId, first: current, second: next });
+        const [first, second] = a.start.getTime() <= b.start.getTime() ? [a, b] : [b, a];
+        conflicts.push({ equipmentId, first, second });
       }
     }
   }
