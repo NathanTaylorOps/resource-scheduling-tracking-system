@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge, certificationBadge } from '@/components/StatusBadge';
+import { SubcontractorLicenseEditor } from '@/components/SubcontractorLicenseEditor';
+import { AddCoiForm } from '@/components/AddCoiForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +25,6 @@ export default async function SubcontractorDetailPage({ params }: { params: { id
     now,
   );
 
-  const licenseResult = subcontractor.licenseExpiryDate
-    ? getCertificationStatus(subcontractor.licenseExpiryDate, now, undefined, 'LICENSE_CYCLE')
-    : null;
-
   return (
     <div className="space-y-6">
       <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline">
@@ -45,21 +43,13 @@ export default async function SubcontractorDetailPage({ params }: { params: { id
 
       <div className="card">
         <h2 className="mb-3 font-semibold">Trade license</h2>
-        {subcontractor.licenseNumber && licenseResult ? (
-          <div className="flex items-center justify-between py-1">
-            <div>
-              <div className="font-medium">{subcontractor.licenseNumber}</div>
-              <div className="text-xs text-zinc-500">
-                {subcontractor.licenseClass && `${subcontractor.licenseClass} · `}
-                {subcontractor.licenseIssuingAuthority} · expires{' '}
-                {subcontractor.licenseExpiryDate?.toLocaleDateString()}
-              </div>
-            </div>
-            <StatusBadge {...certificationBadge(licenseResult)} />
-          </div>
-        ) : (
-          <p className="text-sm text-zinc-500">No trade license on file for this firm.</p>
-        )}
+        <SubcontractorLicenseEditor
+          subcontractorId={subcontractor.id}
+          licenseNumber={subcontractor.licenseNumber}
+          licenseClass={subcontractor.licenseClass}
+          licenseIssuingAuthority={subcontractor.licenseIssuingAuthority}
+          licenseExpiryDate={subcontractor.licenseExpiryDate?.toISOString() ?? null}
+        />
       </div>
 
       <div className="card">
@@ -84,6 +74,7 @@ export default async function SubcontractorDetailPage({ params }: { params: { id
           })}
           {subcontractor.coiRecords.length === 0 && <p className="py-2 text-sm text-zinc-500">No COI records on file.</p>}
         </ul>
+        <AddCoiForm subcontractorId={subcontractor.id} />
       </div>
 
       <div className="card">

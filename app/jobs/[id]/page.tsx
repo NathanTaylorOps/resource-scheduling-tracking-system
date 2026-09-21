@@ -8,6 +8,10 @@ import { getCertificationStatus } from '@/lib/domain/certifications';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WeatherPanel } from '@/components/WeatherPanel';
+import { JobRequirementsEditor } from '@/components/JobRequirementsEditor';
+import { PermitsEditor } from '@/components/PermitsEditor';
+import { DailyLogForm } from '@/components/DailyLogForm';
+import { ToolboxTalkForm } from '@/components/ToolboxTalkForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +129,11 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     include: { conductedByWorker: true, attendees: { include: { worker: true } } },
     orderBy: { meetingDate: 'desc' },
   });
+
+  // The crew list both the daily-log and toolbox-talk forms below draw
+  // their worker pickers from — whoever's actually assigned to this job,
+  // deduplicated the same way workerNameById above already does.
+  const crewOnJob = [...new Map(job.assignments.map((a) => [a.worker.id, { id: a.worker.id, name: a.worker.name }])).values()];
 
   return (
     <div className="space-y-6">
@@ -283,93 +292,47 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         {/* Crew requirements — the staffing plan, independent of who's actually assigned */}
         <div className="card">
           <h2 className="mb-3 font-semibold">Crew requirements</h2>
-          <ul className="divide-y divide-outdoor-border">
-            {roleRequirements.map((r) => {
-              const assignedCount = assignedCountByRole.get(r.roleOrTrade) ?? 0;
-              const met = assignedCount >= r.requiredCount;
-              return (
-                <li key={r.id} className="flex items-center justify-between py-2">
-                  <div>
-                    <div className="font-medium">{r.roleOrTrade}</div>
-                    <div className="text-xs text-zinc-500">{assignedCount} of {r.requiredCount} assigned</div>
-                  </div>
-                  <StatusBadge status={met ? 'ok' : 'warning'} label={met ? 'Filled' : 'Unfilled'} />
-                </li>
-              );
-            })}
-            {roleRequirements.length === 0 && <p className="py-2 text-sm text-zinc-500">No staffing plan set for this job.</p>}
-          </ul>
+          <JobRequirementsEditor
+            jobId={job.id}
+            requirements={roleRequirements.map((r) => ({ id: r.id, roleOrTrade: r.roleOrTrade, requiredCount: r.requiredCount }))}
+            assignedCountByRole={Object.fromEntries(assignedCountByRole)}
+          />
         </div>
 
         {/* Permits & inspections */}
         <div className="card">
           <h2 className="mb-3 font-semibold">Permits &amp; inspections</h2>
-          <ul className="divide-y divide-outdoor-border">
-            {permits.map((p) => {
+          <PermitsEditor
+            jobId={job.id}
+            permits={permits.map((p) => ({
+              id: p.id,
+              permitType: p.permitType,
+              permitNumber: p.permitNumber,
+              issuingAuthority: p.issuingAuthority,
+              status: p.status,
+              appliedDate: p.appliedDate.toISOString(),
+              issuedDate: p.issuedDate?.toISOString() ?? null,
+              expiryDate: p.expiryDate?.toISOString() ?? null,
               // Same check the readiness banner above already uses for
               // expiredPermits — a permit whose expiryDate has passed reads
-              // as expired here too, even before its stored status field
-              // has been updated to say so, so this badge can't show
-              // "Issued" in green on the same permit the banner is calling
-              // expired above it.
-              const isExpired = p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime());
-              return (
-              <li key={p.id} className="py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="font-medium">
-                      {p.permitType.charAt(0) + p.permitType.slice(1).toLowerCase()} permit{p.permitNumber ? ` · ${p.permitNumber}` : ''}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {p.issuingAuthority} · applied {p.appliedDate.toLocaleDateString()}
-                      {p.issuedDate && ` · issued ${p.issuedDate.toLocaleDateString()}`}
-                      {p.expiryDate && ` · expires ${p.expiryDate.toLocaleDateString()}`}
-                    </div>
-                  </div>
-                  <StatusBadge
-                    status={isExpired ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
-                    label={isExpired ? 'Expired' : p.status.charAt(0) + p.status.slice(1).toLowerCase()}
-                  />
-                </div>
-                {p.inspections.length > 0 && (
-                  <ul className="mt-2 space-y-1 border-l border-outdoor-border pl-3">
-                    {p.inspections.map((i) => (
-                      <li key={i.id} className="text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-zinc-600">{i.inspectionType.replace(/_/g, ' ').toLowerCase()}</span>
-                          <span className={i.status === 'FAILED' ? 'font-medium text-red-700' : i.status === 'PASSED' ? 'text-green-700' : 'text-zinc-500'}>
-                            {i.status === 'SCHEDULED' && i.scheduledDate
-                              ? `scheduled ${i.scheduledDate.toLocaleDateString()}`
-                              : i.status.replace(/_/g, ' ').toLowerCase()}
-                          </span>
-                        </div>
-                        {i.status === 'FAILED' && (i.correctionNotes || i.reinspectionScheduledDate) && (
-                          <div className="mt-1 rounded border border-red-100 bg-red-50 px-2 py-1.5 text-zinc-600">
-                            {/* "needed" only while there's no re-inspection booked yet — once
-                                one's on the calendar the correction itself has been made (or
-                                is in hand), and re-flagging it as still-outstanding here would
-                                be a false alarm sitting right next to its own resolution. */}
-                            {i.correctionNotes && (
-                              <div>{i.reinspectionScheduledDate ? 'Correction made' : 'Correction needed'}: {i.correctionNotes}</div>
-                            )}
-                            {i.correctionResponsible && <div>Responsible: {i.correctionResponsible}</div>}
-                            {i.reinspectionScheduledDate && (
-                              <div>
-                                Re-inspection {i.reinspectionScheduledDate.toLocaleDateString()}
-                                {i.reinspectionChannel && ` · ${i.reinspectionChannel.replace(/_/g, ' ').toLowerCase()}`}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-              );
-            })}
-            {permits.length === 0 && <p className="py-2 text-sm text-zinc-500">No permits filed for this job.</p>}
-          </ul>
+              // as expired here too, even before its stored status field has
+              // been updated to say so.
+              isExpired: p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime()),
+              inspections: p.inspections.map((i) => ({
+                id: i.id,
+                inspectionType: i.inspectionType,
+                sequence: i.sequence,
+                status: i.status,
+                scheduledDate: i.scheduledDate?.toISOString() ?? null,
+                completedDate: i.completedDate?.toISOString() ?? null,
+                inspectorNotes: i.inspectorNotes,
+                correctionNotes: i.correctionNotes,
+                correctionResponsible: i.correctionResponsible,
+                reinspectionChannel: i.reinspectionChannel,
+                reinspectionScheduledDate: i.reinspectionScheduledDate?.toISOString() ?? null,
+              })),
+            }))}
+          />
         </div>
       </div>
 
@@ -402,6 +365,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             ))}
             {dailyLogs.length === 0 && <p className="py-2 text-sm text-zinc-500">No daily logs submitted yet.</p>}
           </ul>
+          <DailyLogForm jobId={job.id} crew={crewOnJob} />
         </div>
 
         {/* Toolbox talks — safety-culture documentation, not a readiness gate */}
@@ -440,6 +404,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             ))}
             {safetyMeetings.length === 0 && <p className="py-2 text-sm text-zinc-500">No toolbox talks logged yet.</p>}
           </ul>
+          <ToolboxTalkForm jobId={job.id} crew={crewOnJob} />
         </div>
       </div>
 

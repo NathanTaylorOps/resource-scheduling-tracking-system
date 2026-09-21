@@ -8,8 +8,10 @@ import { excludeCoveredChildren } from '@/lib/domain/maintenance';
 import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { StatusBadge } from '@/components/StatusBadge';
 import { WorkOrderCompleteButton } from '@/components/WorkOrderCompleteButton';
+import { EquipmentReservationsEditor } from '@/components/EquipmentReservationsEditor';
 import { generateEquipmentQrDataUrl } from '@/lib/qr';
 import { headers } from 'next/headers';
+import { JobStatus } from '@/lib/enums';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,13 +75,18 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
   // (no Prisma relation; see the schema comment), a projection of the
   // latest scan rather than an enforced foreign key, so they're resolved to
   // display names with their own small lookups rather than an `include`.
-  const [currentJob, currentWorker] = await Promise.all([
+  const [currentJob, currentWorker, bookableJobs] = await Promise.all([
     equipment.currentJobId
       ? prisma.job.findUnique({ where: { id: equipment.currentJobId }, select: { id: true, name: true } })
       : null,
     equipment.currentWorkerId
       ? prisma.worker.findUnique({ where: { id: equipment.currentWorkerId }, select: { id: true, name: true } })
       : null,
+    prisma.job.findMany({
+      where: { status: { in: [JobStatus.PLANNING, JobStatus.ACTIVE] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
   ]);
 
   return (
@@ -184,24 +191,17 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       {/* Reservations — forward bookings, distinct from current custody above */}
       <div className="card">
         <h2 className="mb-3 font-semibold">Reservations</h2>
-        <ul className="divide-y divide-outdoor-border">
-          {equipment.reservations.map((r) => (
-            <li key={r.id} className="flex items-center justify-between py-2">
-              <div>
-                <Link href={`/jobs/${r.job.id}`} className="font-medium hover:underline">
-                  {r.job.name}
-                </Link>
-                <div className="text-xs text-zinc-500">
-                  {r.start.toLocaleDateString()} – {r.end.toLocaleDateString()}
-                </div>
-              </div>
-              {conflictedReservationIds.has(r.id) && (
-                <span className="text-xs font-medium text-red-700">Double-booked</span>
-              )}
-            </li>
-          ))}
-          {equipment.reservations.length === 0 && <p className="py-2 text-sm text-zinc-500">No forward bookings for this asset.</p>}
-        </ul>
+        <EquipmentReservationsEditor
+          equipmentId={equipment.id}
+          reservations={equipment.reservations.map((r) => ({
+            id: r.id,
+            job: { id: r.job.id, name: r.job.name },
+            start: r.start.toISOString(),
+            end: r.end.toISOString(),
+          }))}
+          conflictedReservationIds={[...conflictedReservationIds]}
+          jobs={bookableJobs}
+        />
       </div>
 
       {/* Maintenance — nested hierarchy already collapsed to what's actually due */}
