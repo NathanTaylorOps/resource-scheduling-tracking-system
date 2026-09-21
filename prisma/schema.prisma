@@ -64,6 +64,14 @@ model Worker {
   phone          String?
   email          String?
 
+  // Set only for SUBCONTRACTOR-type workers — the person who actually shows
+  // up on site, linked to the business whose insurance and license are what
+  // actually gate their eligibility to work (see Subcontractor below). A
+  // direct employee has no subcontractor; their compliance is entirely
+  // personal, via WorkerCertification.
+  subcontractorId String?
+  subcontractor   Subcontractor? @relation(fields: [subcontractorId], references: [id])
+
   assignments    Assignment[]
   certifications WorkerCertification[]
   scanEvents     ScanEvent[]
@@ -73,6 +81,56 @@ model Worker {
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([subcontractorId])
+}
+
+// A subcontractor firm's insurance and trade license, tracked at the entity
+// level rather than as another row on whichever of its workers happens to be
+// on site — a real dispatch decision is gated by whether the BUSINESS is
+// currently insured and licensed, not by a training card belonging to the
+// individual standing in front of you. Structurally distinct from
+// WorkerCertification for exactly that reason: one is a person-level
+// training record, this is a firm-level eligibility-to-work record. See
+// lib/domain/subcontractors.ts.
+model Subcontractor {
+  id                      String    @id @default(cuid())
+  businessName            String
+  trade                   String
+  licenseNumber           String?
+  licenseClass            String?
+  licenseIssuingAuthority String?
+  licenseExpiryDate       DateTime?
+  notes                   String?
+
+  workers                 Worker[]
+  coiRecords              SubcontractorCOI[]
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+}
+
+// One row per coverage type on a subcontractor's certificate of insurance —
+// a real COI bundles several (general liability, workers' comp, commercial
+// auto, umbrella), each with its own carrier, policy number, and expiry, the
+// same one-row-per-item pattern EquipmentCompliance already uses for
+// calibration vs. inspection vs. warranty rather than one flattened record.
+model SubcontractorCOI {
+  id                String        @id @default(cuid())
+  subcontractorId   String
+  coverageType      String
+  carrier           String
+  policyNumber      String
+  effectiveDate     DateTime
+  expiryDate        DateTime
+  coverageLimit     Float?
+  additionalInsured Boolean       @default(false)
+
+  subcontractor     Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime      @default(now())
+
+  @@index([subcontractorId])
 }
 
 model Assignment {
@@ -92,19 +150,41 @@ model Assignment {
   @@index([jobId])
 }
 
+// renewalPattern names which of four real-world renewal shapes this
+// certification follows (see lib/domain/certifications.ts for the status
+// math each one drives) — a single expiryDate field can't honestly represent
+// a card that never formally expires the same way it represents a hard
+// annual refresher:
+//   HARD_EXPIRY       — a real wall (HAZWOPER's annual refresher, NCCCO's
+//                        5-year cycle). expiryDate is the actual expiry.
+//   INFORMAL_RECENCY  — never formally expires (OSHA 10/30 cards); expiryDate
+//                        holds the informal recommended-refresh-by date
+//                        instead, and crossing it reads as "aging," not
+//                        "expired" — a real gap, but not a hard stop.
+//   GRACE_PERIOD      — a fixed cycle with a filing grace window (EPA RRP's
+//                        5 years / 90-day filing rule): a renewal filed on
+//                        time keeps the certification valid past expiryDate
+//                        while the decision is pending. renewalFiledDate
+//                        records that filing.
+//   LICENSE_CYCLE     — a state trade-license clock (e.g. a 2-year CSLB
+//                        cycle), which behaves like HARD_EXPIRY for status
+//                        purposes but is named separately since it's a
+//                        different real-world renewal event.
 model WorkerCertification {
-  id          String   @id @default(cuid())
-  workerId    String
-  certType    String
-  issuingBody String
-  issueDate   DateTime
-  expiryDate  DateTime
-  documentUrl String?
+  id               String    @id @default(cuid())
+  workerId         String
+  certType         String
+  issuingBody      String
+  issueDate        DateTime
+  expiryDate       DateTime
+  renewalPattern   String    @default("HARD_EXPIRY")
+  renewalFiledDate DateTime?
+  documentUrl      String?
 
-  worker      Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  worker           Worker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([workerId])
 }
@@ -364,6 +444,18 @@ model Inspection {
   scheduledDate  DateTime?
   completedDate  DateTime?
   inspectorNotes String?
+
+  // The correction-and-reschedule detail a failed inspection actually needs
+  // in practice (a jurisdiction's own process — corrections required, who
+  // fixes them, how re-inspection gets scheduled — see Portland's published
+  // process). Deliberately still one row per inspection type, not a full
+  // visit-by-visit history: these fields carry what's being done about a
+  // failure without promoting Inspection into a full audit-trail model,
+  // the same scope call the rest of this table already makes.
+  correctionNotes           String?
+  correctionResponsible     String?
+  reinspectionChannel       String?
+  reinspectionScheduledDate DateTime?
 
   permit         Permit    @relation(fields: [permitId], references: [id], onDelete: Cascade)
 

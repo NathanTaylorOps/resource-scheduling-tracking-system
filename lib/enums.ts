@@ -90,6 +90,12 @@ export const PermitType = {
   MECHANICAL: 'MECHANICAL',
   SEPTIC: 'SEPTIC',
   GRADING: 'GRADING',
+  // Added for light-commercial tenant-improvement work, which routinely
+  // pulls several concurrent permits from different authorities on
+  // different clocks — building, fire marshal, sometimes health — rather
+  // than the single building-department permit a residential job needs.
+  FIRE: 'FIRE',
+  HEALTH: 'HEALTH',
 } as const;
 export type PermitType = (typeof PermitType)[keyof typeof PermitType];
 
@@ -120,3 +126,36 @@ export const InspectionStatus = {
   FAILED: 'FAILED',
 } as const;
 export type InspectionStatus = (typeof InspectionStatus)[keyof typeof InspectionStatus];
+
+// How a re-inspection after a failure actually gets scheduled — modeled on
+// the three channels a real jurisdiction (Portland, OR) documents, plus the
+// baseline in-person visit every jurisdiction supports.
+export const ReinspectionChannel = {
+  REMOTE_VIDEO: 'REMOTE_VIDEO',
+  ONLINE_PORTAL: 'ONLINE_PORTAL',
+  PHONE: 'PHONE',
+  IN_PERSON: 'IN_PERSON',
+} as const;
+export type ReinspectionChannel = (typeof ReinspectionChannel)[keyof typeof ReinspectionChannel];
+
+// See the long comment on WorkerCertification.renewalPattern in
+// schema.prisma for what each of these four real-world renewal shapes means
+// and why one expiryDate field can't honestly represent all of them alike.
+export const RenewalPattern = {
+  HARD_EXPIRY: 'HARD_EXPIRY',
+  INFORMAL_RECENCY: 'INFORMAL_RECENCY',
+  GRACE_PERIOD: 'GRACE_PERIOD',
+  LICENSE_CYCLE: 'LICENSE_CYCLE',
+} as const;
+export type RenewalPattern = (typeof RenewalPattern)[keyof typeof RenewalPattern];
+
+// A subcontractor's certificate of insurance bundles several of these, each
+// with its own carrier, policy number, and expiry — see SubcontractorCOI.
+export const CoverageType = {
+  GENERAL_LIABILITY: 'GENERAL_LIABILITY',
+  WORKERS_COMP: 'WORKERS_COMP',
+  COMMERCIAL_AUTO: 'COMMERCIAL_AUTO',
+  UMBRELLA: 'UMBRELLA',
+  PROFESSIONAL_LIABILITY: 'PROFESSIONAL_LIABILITY',
+} as const;
+export type CoverageType = (typeof CoverageType)[keyof typeof CoverageType];
