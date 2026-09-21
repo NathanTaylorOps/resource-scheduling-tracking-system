@@ -248,6 +248,10 @@ async function main() {
       // Teo's own trade license, distinct from Salvador Electric's business
       // license tracked on the Subcontractor record above.
       { workerId: teo.id, certType: 'Master Electrician License', issuingBody: 'Washington State Department of Labor & Industries', issueDate: daysAgo(300), expiryDate: daysFromNow(430), renewalPattern: RenewalPattern.LICENSE_CYCLE },
+      // Renata's own credential, current — the other half of the Cho
+      // Plumbing example above: the firm's business license has lapsed, but
+      // that's a firm-level fact, distinct from Renata's personal standing.
+      { workerId: renata.id, certType: 'Backflow Prevention Assembly Tester', issuingBody: 'Washington State Department of Health', issueDate: daysAgo(400), expiryDate: daysFromNow(320) },
       { workerId: bigSam.id, certType: 'Forklift Operator', issuingBody: 'Coastwood Internal Training', issueDate: daysAgo(300), expiryDate: daysFromNow(45) },
       { workerId: bigSam.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(800), expiryDate: daysFromNow(700), renewalPattern: RenewalPattern.INFORMAL_RECENCY },
       { workerId: jules.id, certType: 'OSHA 10', issuingBody: 'OSHA Outreach Training Program', issueDate: daysAgo(120), expiryDate: daysFromNow(1100), renewalPattern: RenewalPattern.INFORMAL_RECENCY },

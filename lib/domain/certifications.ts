@@ -50,11 +50,16 @@ const DEFAULT_THRESHOLDS = [90, 60, 30];
  * of this pattern. */
 const GRACE_FILING_WINDOW_DAYS = 90;
 
-/** The industry's informal expectation for cards that never formally expire
- * (OSHA 10/30) is "refreshed within the last three to five years" — three
- * years is the earlier, more conservative edge of that range, so a worker
- * reads as 'aging' as soon as it's plausible a reviewer would ask about it,
- * not only once every observer would agree it's overdue. */
+/** Reference figure only — getCertificationStatus takes whatever expiryDate
+ * it's given on an INFORMAL_RECENCY row and never consults this constant
+ * itself, since that date already IS the recommended-refresh-by date, however
+ * it was set. This exists for whoever sets that date (an HR policy, or this
+ * app's own seed data): the industry's informal expectation for cards that
+ * never formally expire (OSHA 10/30) is "refreshed within the last three to
+ * five years," and three years is the earlier, more conservative edge of
+ * that range — a worker reads as 'aging' as soon as it's plausible a
+ * reviewer would ask about it, not only once every observer would agree
+ * it's overdue. */
 export const INFORMAL_RECENCY_WINDOW_DAYS = 3 * 365;
 
 export interface CertificationStatusResult {

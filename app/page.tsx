@@ -88,5 +88,14 @@ function SummaryTile({ label, value, tone }: { label: string; value: number; ton
 async function getDueSoonCertCount(): Promise<number> {
   const now = new Date();
   const certs = await prisma.workerCertification.findMany();
-  return certs.filter((c) => getCertificationStatus(c.expiryDate, now).status !== 'valid').length;
+  // Matches the tile's own label exactly: 'expiring_soon' and 'expired' are
+  // the two statuses that actually mean "due soon or expired." 'aging' (an
+  // INFORMAL_RECENCY card past its informal window) and 'renewal_pending' (a
+  // GRACE_PERIOD renewal filed on time) are deliberately excluded — neither
+  // is a problem needing the same attention, and lumping them in here would
+  // make this count claim more than it means.
+  return certs.filter((c) => {
+    const { status } = getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate);
+    return status === 'expiring_soon' || status === 'expired';
+  }).length;
 }
