@@ -294,6 +294,12 @@ model EquipmentCompliance {
   updatedAt         DateTime        @updatedAt
 
   @@index([equipmentId])
+  // One row per (asset, compliance type, counter) — without this, nothing
+  // stops a second CALIBRATION/RUN_HOURS row from being added for the same
+  // asset, and readiness (lib/readiness-service.ts) sums every matching row
+  // instead of reading one authoritative record, silently double-counting
+  // an item that should only ever be evaluated once.
+  @@unique([equipmentId, complianceType, counterType])
 }
 
 // Preventive-maintenance plans. parentPlanId enables the nested-hierarchy
@@ -334,7 +340,13 @@ model WorkOrder {
   createdFromScanEventId String?
 
   equipment           Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  maintenancePlan      MaintenancePlan? @relation(fields: [maintenancePlanId], references: [id])
+  // Deleting a plan that a completed work order still points back to must
+  // not throw an FK-constraint error — the completed work order is a real
+  // historical record and should survive the plan being removed, just with
+  // that reference cleared, the same way every other optional relation in
+  // this file is explicit about its onDelete behavior rather than leaving
+  // it to Prisma/SQLite's restrict-by-default.
+  maintenancePlan      MaintenancePlan? @relation(fields: [maintenancePlanId], references: [id], onDelete: SetNull)
 
   createdAt           DateTime         @default(now())
   updatedAt            DateTime        @updatedAt
@@ -483,6 +495,12 @@ model Inspection {
   updatedAt      DateTime  @updatedAt
 
   @@index([permitId])
+  // One inspection per step in a permit's sequence (footing, foundation,
+  // framing, ... final) — without this, nothing stops two rows from
+  // claiming the same sequence number, which would silently break the
+  // ordered footing-through-final progression the README describes and
+  // that any UI walking `sequence` in order depends on.
+  @@unique([permitId, sequence])
 }
 
 // One entry per job per day — actual weather, crew on site, work performed,
