@@ -30,7 +30,7 @@ export function Nav() {
         <Link
           href="/"
           className="text-lg font-bold tracking-tight focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-          aria-label="Resource Scheduling & Tracking System — home"
+          aria-label="RSTS — Resource Scheduling & Tracking System, home"
           title="Resource Scheduling & Tracking System"
         >
           RSTS
