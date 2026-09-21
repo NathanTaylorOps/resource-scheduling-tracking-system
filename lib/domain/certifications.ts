@@ -118,6 +118,28 @@ export interface AssignmentEligibility {
 }
 
 /**
+ * Parses a stored requiredCertTypes value (see the field's comment on
+ * JobRoleRequirement in schema.prisma) into the trimmed, non-empty list
+ * canAssignWorker actually checks against.
+ *
+ * Centralized here rather than left as an inline .split(',').map().filter()
+ * at each call site so a value that trims non-empty but carries no real cert
+ * name — a bare "," or ", ," typed into the requirement form — reads the
+ * same way everywhere: as nothing required, not as a literal one-item list
+ * containing an empty string. The requirements route (deciding what to
+ * persist) and the assignments route (deciding what to gate on) both call
+ * this same function so the write side and the read side can never
+ * silently disagree on what a stored value means.
+ */
+export function parseCertTypesList(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/**
  * Checks whether a worker holds every certification a task requires, all
  * currently valid. This is the gate that links crew scheduling to
  * certification tracking: a scheduler should refuse — or hard-warn on — an

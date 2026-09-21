@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { canAssignWorker } from '@/lib/domain/certifications';
+import { canAssignWorker, parseCertTypesList } from '@/lib/domain/certifications';
 
 interface CreateAssignmentBody {
   workerId: string;
@@ -68,10 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const requirement = await prisma.jobRoleRequirement.findFirst({
     where: { jobId: job.id, roleOrTrade: roleOnJob },
   });
-  const requiredCertTypes = requirement?.requiredCertTypes
-    ?.split(',')
-    .map((t) => t.trim())
-    .filter(Boolean) ?? [];
+  const requiredCertTypes = parseCertTypesList(requirement?.requiredCertTypes);
 
   if (requiredCertTypes.length > 0) {
     const eligibility = canAssignWorker(requiredCertTypes, worker.certifications, new Date());

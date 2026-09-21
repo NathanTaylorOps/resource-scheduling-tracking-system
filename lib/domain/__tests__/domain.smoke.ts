@@ -11,7 +11,7 @@
 import { getComplianceStatus, recordCompletion, earliestDue } from '../compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate, bucketForecast } from '../forecasting';
 import { findOverlaps, calculateUtilization, findUnfilledRoles } from '../scheduling';
-import { getCertificationStatus, canAssignWorker } from '../certifications';
+import { getCertificationStatus, canAssignWorker, parseCertTypesList } from '../certifications';
 import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePlan } from '../maintenance';
 import { computeReadiness, permitsStatusFrom } from '../readiness';
 import { custodyUpdateFor } from '../custody';
@@ -308,6 +308,17 @@ console.log('\ncertifications.ts — expiry status and assignment gating');
     now,
   );
   assertEqual('a duplicate cert where every on-file record has expired still blocks assignment', duplicateCertAllExpired.eligible, false);
+
+  // parseCertTypesList: the write side (the requirements route) and the read
+  // side (the assignments route) both parse a stored requiredCertTypes value
+  // through this one function, so a malformed value can't mean one thing
+  // when it's saved and another when it's enforced.
+  assertEqual('a normal comma-separated list parses to its trimmed items', parseCertTypesList('OSHA 10, Master Electrician License'), ['OSHA 10', 'Master Electrician License']);
+  assertEqual('null parses to no required certs', parseCertTypesList(null), []);
+  assertEqual('undefined parses to no required certs', parseCertTypesList(undefined), []);
+  assertEqual('an empty string parses to no required certs', parseCertTypesList(''), []);
+  assertEqual('a bare comma with nothing else parses to no required certs, not a one-item list holding an empty string', parseCertTypesList(','), []);
+  assertEqual('stray commas and blank segments between real items are dropped', parseCertTypesList(' , OSHA 10 ,, , Master Electrician License ,'), ['OSHA 10', 'Master Electrician License']);
 }
 
 console.log('\nsubcontractors.ts — entity-level COI and license compliance');
