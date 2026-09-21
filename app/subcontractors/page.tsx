@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge } from '@/components/StatusBadge';
+import { CreateSubcontractorForm } from '@/components/CreateSubcontractorForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,8 @@ export default async function SubcontractorsPage() {
           for person-level certifications.
         </p>
       </div>
+
+      <CreateSubcontractorForm />
 
       {/* Below sm: a table with four columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-
