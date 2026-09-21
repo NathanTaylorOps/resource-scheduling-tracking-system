@@ -37,6 +37,12 @@ export function CreateEquipmentForm() {
       setError('Enter both dates.');
       return;
     }
+    // Mirrors the API route's own check — saves a round trip for the
+    // common case of picking the dates in the wrong order.
+    if (new Date(inServiceDate).getTime() < new Date(acquisitionDate).getTime()) {
+      setError("In-service date can't be before the acquisition date.");
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await fetch('/api/equipment', {

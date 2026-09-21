@@ -40,6 +40,12 @@ export function EquipmentReservationsEditor({
       setError('Select a job and both dates.');
       return;
     }
+    // Mirrors the API route's own check — saves a round trip for the
+    // common case of picking the dates in the wrong order.
+    if (new Date(end).getTime() <= new Date(start).getTime()) {
+      setError('End date must be after the start date.');
+      return;
+    }
     setPending('add');
     try {
       const response = await fetch(`/api/equipment/${equipmentId}/reservations`, {

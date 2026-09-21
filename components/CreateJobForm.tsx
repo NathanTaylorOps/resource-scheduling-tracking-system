@@ -56,6 +56,13 @@ export function CreateJobForm() {
       setError('Enter a target completion date.');
       return;
     }
+    // Mirrors app/api/jobs/route.ts's own check — catching this here saves
+    // a round trip for the common case (picking dates in the wrong order),
+    // though the server still enforces it independently.
+    if (new Date(targetEndDate).getTime() <= new Date(startDate).getTime()) {
+      setError('Target completion date must be after the start date.');
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await fetch('/api/jobs', {

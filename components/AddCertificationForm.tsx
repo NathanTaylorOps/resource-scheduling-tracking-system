@@ -45,6 +45,12 @@ export function AddCertificationForm({ workerId }: AddCertificationFormProps) {
       setError('Enter both the issue and expiry dates.');
       return;
     }
+    // Mirrors the API route's own check — saves a round trip for the
+    // common case of picking the dates in the wrong order.
+    if (new Date(expiryDate).getTime() <= new Date(issueDate).getTime()) {
+      setError('Expiry date must be after the issue date.');
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await fetch(`/api/workers/${workerId}/certifications`, {

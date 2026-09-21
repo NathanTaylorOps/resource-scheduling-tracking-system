@@ -82,7 +82,18 @@ export function DailyLogForm({ jobId, crew, existingLog, onSubmitted }: DailyLog
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // crewCount's default is a plain useState initializer, which only
+          // runs once, the first time this component mounts — it doesn't
+          // re-derive itself if `crew` changes later while this form's
+          // parent (the job detail page) stays mounted across a
+          // router.refresh(). Re-seeding it here, at the moment the form is
+          // actually opened for a fresh (non-existingLog) entry, is what
+          // keeps the default in step with the crew roster as it stands
+          // right now rather than as it stood when the page first loaded.
+          if (!existingLog) setCrewCount(crew.length || 1);
+          setOpen(true);
+        }}
         className="field-btn mt-3 w-full border border-outdoor-border bg-white text-zinc-800 hover:bg-outdoor-surface"
       >
         {existingLog ? (

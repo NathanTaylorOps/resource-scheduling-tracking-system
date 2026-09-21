@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, ShieldAlert } from 'lucide-react';
 
 interface AssignWorkerFormProps {
   jobId: string;
@@ -35,6 +35,12 @@ export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWor
   const [end, setEnd] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Distinguishes a compliance hard-stop (409 — this specific worker is
+  // missing or has an expired required certification) from an ordinary
+  // validation error (400 — a forgotten field). Both used to render as the
+  // same plain red text, which made it easy to mistake "this assignment is
+  // blocked by a certification rule" for a typo to fix and resubmit.
+  const [isCertBlock, setIsCertBlock] = useState(false);
 
   function handleRoleSelect(value: string) {
     if (value === CUSTOM_ROLE_OPTION) {
@@ -49,6 +55,7 @@ export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWor
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setIsCertBlock(false);
     if (!workerId) {
       setError('Select a worker.');
       return;
@@ -61,6 +68,12 @@ export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWor
       setError('Enter both start and end dates.');
       return;
     }
+    // Mirrors the API route's own end-after-start check — saves a round
+    // trip for the common case of picking the dates in the wrong order.
+    if (new Date(end).getTime() <= new Date(start).getTime()) {
+      setError('End date must be after the start date.');
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await fetch(`/api/jobs/${jobId}/assignments`, {
@@ -70,6 +83,12 @@ export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWor
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
+        // A 409 here is specifically the certification hard-stop
+        // (app/api/jobs/[id]/assignments/route.ts) — every other rejection
+        // this route returns is a 400. Checking the status, not the
+        // message text, is what lets the UI treat it differently without
+        // depending on exact wording staying in sync between the two.
+        if (response.status === 409) setIsCertBlock(true);
         throw new Error(payload?.error ?? 'Could not create that assignment.');
       }
       setWorkerId('');
@@ -152,7 +171,16 @@ export function AssignWorkerForm({ jobId, workers, roleRequirements }: AssignWor
           Cancel
         </button>
       </div>
-      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      {error && isCertBlock && (
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-red-700" aria-hidden="true" />
+          <div>
+            <div className="text-xs font-semibold text-red-800">Blocked by certification requirement</div>
+            <div className="text-xs text-red-700">{error}</div>
+          </div>
+        </div>
+      )}
+      {error && !isCertBlock && <p role="alert" className="text-xs text-red-700">{error}</p>}
     </form>
   );
 }

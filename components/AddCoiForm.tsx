@@ -30,6 +30,12 @@ export function AddCoiForm({ subcontractorId }: { subcontractorId: string }) {
       setError('Enter the carrier, policy number, and expiry date.');
       return;
     }
+    // Mirrors the API route's own check — saves a round trip for the
+    // common case of picking the dates in the wrong order.
+    if (new Date(expiryDate).getTime() <= new Date(effectiveDate).getTime()) {
+      setError('Expiry date must be after the effective date.');
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await fetch(`/api/subcontractors/${subcontractorId}/coi`, {
