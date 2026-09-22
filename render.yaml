@@ -23,8 +23,14 @@ services:
     # for the build step too, which makes a plain `npm install` skip
     # devDependencies entirely — this flag overrides that rather than
     # relying on unsetting NODE_ENV, which didn't reliably prevent it.
-    buildCommand: npm install --include=dev && npx prisma generate && npm run db:build-template && npm run build
-    startCommand: npm run start
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    # db:build-template runs here, not in buildCommand, on purpose: Render
+    # excludes gitignored paths (prisma/template.db is one, deliberately —
+    # it's generated, not something to commit) from what actually reaches
+    # the running container, even though it exists during the build step
+    # itself. Building it at startup instead means it's created directly in
+    # the filesystem the app will actually read from.
+    startCommand: npm run db:build-template && npm run start
     envVars:
       # Used only by Prisma's own tooling during the build (generate, the
       # template-database build) — the running app gives each visitor their
