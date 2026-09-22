@@ -70,8 +70,9 @@ A few other things are out of scope for this pass, on purpose:
 - **html5-qrcode** for in-browser camera QR scanning, **qrcode** for tag generation
 - **Leaflet / react-leaflet** for the multi-site map view
 - National Weather Service API and Open-Meteo's historical archive API for the two weather layers — both free, no API key required
+- A per-visitor session layer (`middleware.ts`, `lib/db.ts`) for hosted use — each visitor gets their own isolated copy of the seeded database, cleaned up after they've been idle a while, so a link can be shared without one visitor seeing another's changes
 
-This is a local, clone-and-run application by design — SQLite and no hosted deployment target, so reviewing it doesn't require standing up any infrastructure first.
+SQLite either way, so there's no separate database server to stand up — reviewing this doesn't require any infrastructure beyond what's below. It runs as a local clone-and-run app, and also as a single persistent process that gives every visitor their own private, temporary copy of the demo data (see `lib/db.ts`) — the second is what a hosted link would run on, if one's live; check above for whether this build currently has one.
 
 ## Getting started
 
@@ -81,23 +82,26 @@ cd resource-scheduling-tracking-system
 npm install
 
 cp .env.example .env
-# .env.example documents both variables — DATABASE_URL needs no changes for
-# local use; NWS_USER_AGENT should be a real identifying string per NWS's
-# usage policy (any descriptive value works for local testing).
+# .env.example documents all three variables — DATABASE_URL and
+# NWS_USER_AGENT need no changes for local use (NWS_USER_AGENT should be a
+# real identifying string per NWS's usage policy in anything beyond local
+# testing); SESSIONS_DIR is optional.
 
-npx prisma migrate dev --name init   # creates dev.db and applies the schema
-npm run db:seed                      # loads the synthetic Coastwood Builders demo data
+npx prisma generate
+npm run db:build-template   # builds prisma/template.db: schema applied, then
+                             # seeded with the synthetic Coastwood Builders data
 
 npm run dev
 ```
 
-Then open `http://localhost:3000`. The dashboard is the entry point — every other view is reachable from the nav bar.
+Then open `http://localhost:3000`. Your first request provisions your own private copy of the seeded data automatically — that's the same per-visitor isolation a hosted deployment relies on, just running for an audience of one. The dashboard is the entry point; every other view is reachable from the nav bar.
 
 Other scripts worth knowing about:
 
 ```bash
-npm run test:domain   # runs the dependency-free domain-logic test suite (lib/domain/__tests__)
-npm run db:studio     # Prisma Studio — a GUI over the local SQLite database
+npm run test:domain       # runs the dependency-free domain-logic test suite (lib/domain/__tests__)
+npm run db:studio         # Prisma Studio, pointed at whatever DATABASE_URL currently names
+npm run db:build-template # rebuilds prisma/template.db after a schema or seed-data change
 ```
 
 ## Project structure
@@ -115,8 +119,12 @@ lib/domain/__tests__/  A dependency-free assertion-based test suite for lib/doma
                        no test framework required.
 lib/weather/          The two weather-layer integrations (NWS forecast, Open-Meteo climatology)
 lib/readiness-service.ts   Wires the pure domain logic to live Prisma data for job readiness
+lib/db.ts              Hands every route and page its own visitor-scoped Prisma client — see "Tech stack"
+lib/session.ts         The session-cookie name shared between middleware.ts and lib/db.ts
+middleware.ts           Issues a visitor's session cookie on their first request
 prisma/schema.prisma  The full data model, with the design rationale documented inline
 prisma/seed.ts        Synthetic Coastwood Builders demo data
+prisma/template.db     Built locally by `npm run db:build-template` — not committed (see .gitignore)
 ```
 
 The domain-logic separation is deliberate: `lib/domain` holds every rule that actually matters — tolerance windows, overlap detection, the nested-maintenance hierarchy, the readiness rollup — as plain TypeScript functions with no framework dependency. That's what makes it possible to verify the rules that matter most in complete isolation, run in seconds, with nothing to install or mock.

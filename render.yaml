@@ -1,0 +1,34 @@
+# Render Blueprint for the hosted demo — see the "RSTS: per-visitor hosting
+# plan" doc for the full design and cost reasoning behind this choice.
+#
+# To deploy: on Render, "New" → "Blueprint", point it at this repo, and it
+# reads this file. NWS_USER_AGENT is left for you to fill in during setup
+# (see the note on it below) rather than committed here.
+#
+# Free-tier behavior worth knowing: the service spins down after a period
+# with no requests and wakes on the next one, with a cold start of up to
+# roughly a minute. That's the accepted trade-off for the free tier — see
+# the hosting plan's Decisions. Self-hosting elsewhere, or Render's paid
+# tier, are both drop-in upgrades later if that stops being acceptable —
+# nothing about this file assumes free specifically, aside from `plan`.
+services:
+  - type: web
+    name: resource-scheduling-tracking-system
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run db:build-template && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Used only by Prisma's own tooling during the build (generate, the
+      # template-database build) — the running app gives each visitor their
+      # own database instead; see lib/db.ts.
+      - key: DATABASE_URL
+        value: file:./prisma/template.db
+      # NWS's usage policy asks for a descriptive User-Agent identifying the
+      # app and a real contact — left blank here on purpose rather than
+      # committed to a public repo; set it in Render's dashboard when you
+      # deploy this blueprint.
+      - key: NWS_USER_AGENT
+        sync: false
