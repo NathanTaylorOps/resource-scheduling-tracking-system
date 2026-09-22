@@ -16,11 +16,16 @@ services:
     name: resource-scheduling-tracking-system
     runtime: node
     plan: free
-    buildCommand: npm install && npx prisma generate && npm run db:build-template && npm run build
+    # --include=dev is deliberate, not a typo: tsx, prisma, and typescript
+    # are all devDependencies, and the build needs all three (the template
+    # database build runs on tsx and prisma; the Next.js build itself needs
+    # typescript). Render's Node services default NODE_ENV to "production"
+    # for the build step too, which makes a plain `npm install` skip
+    # devDependencies entirely — this flag overrides that rather than
+    # relying on unsetting NODE_ENV, which didn't reliably prevent it.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run db:build-template && npm run build
     startCommand: npm run start
     envVars:
-      - key: NODE_ENV
-        value: production
       # Used only by Prisma's own tooling during the build (generate, the
       # template-database build) — the running app gives each visitor their
       # own database instead; see lib/db.ts.
