@@ -7,6 +7,7 @@ import { calculateUtilization } from '@/lib/domain/scheduling';
 import { StatusBadge, certificationBadge } from '@/components/StatusBadge';
 import { AddCertificationForm } from '@/components/AddCertificationForm';
 import { AddScreeningForm } from '@/components/AddScreeningForm';
+import { RoleContextBanner } from '@/components/RoleContextBanner';
 import { getViewingActor } from '@/lib/actor';
 import { permissionsFor } from '@/lib/role';
 
@@ -83,6 +84,8 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
           </p>
         )}
       </div>
+
+      <RoleContextBanner role={actor.role} perms={perms} />
 
       <div className="card w-fit">
         <div className="text-xs text-zinc-500">Utilization, trailing 30 days</div>

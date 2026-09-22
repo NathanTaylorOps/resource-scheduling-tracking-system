@@ -19,6 +19,7 @@ import { LienWaiversEditor } from '@/components/LienWaiversEditor';
 import { SafetyIncidentsEditor } from '@/components/SafetyIncidentsEditor';
 import { HazardAnalysesEditor } from '@/components/HazardAnalysesEditor';
 import { PayrollEntriesEditor } from '@/components/PayrollEntriesEditor';
+import { RoleContextBanner } from '@/components/RoleContextBanner';
 import { getViewingActor } from '@/lib/actor';
 import { permissionsFor } from '@/lib/role';
 
@@ -185,6 +186,42 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     orderBy: { businessName: 'asc' },
   });
 
+  // --- Recent activity: the audit trail on exactly the fields lib/audit.ts
+  // actually writes to (see its own comment for why the list stops there)
+  // — permit status, inspection outcomes, lien waiver status, safety
+  // incident status. AuditLogEntry has no jobId of its own (it's keyed by
+  // entityType/entityId against whatever it's attached to), so this job's
+  // slice is whatever entry's entityId matches one of this job's own
+  // permits, inspections, lien waivers, or safety incidents.
+  const auditableEntityIds = [
+    ...permits.map((p) => p.id),
+    ...permits.flatMap((p) => p.inspections.map((i) => i.id)),
+    ...lienWaivers.map((w) => w.id),
+    ...safetyIncidents.map((i) => i.id),
+  ];
+  const recentActivity = auditableEntityIds.length
+    ? await prisma.auditLogEntry.findMany({
+        where: { entityId: { in: auditableEntityIds } },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+      })
+    : [];
+
+  // --- Weather-exposure JHA suggestion: a lightweight nudge, not a gate.
+  // A job flagged weather-sensitive or conditional has exposure-related
+  // tasks (cold/heat stress, wet footing, wind on elevated work) worth
+  // their own hazard analysis; this just surfaces that if nothing on file
+  // already reads like it covers it, rather than requiring one — an
+  // INSENSITIVE job, or one that's already filed a weather-flavored JHA,
+  // gets no nudge at all.
+  const WEATHER_HAZARD_KEYWORDS = ['weather', 'rain', 'wind', 'heat', 'cold', 'ice', 'lightning', 'storm'];
+  const hasWeatherJha = hazardAnalyses.some((jha) =>
+    WEATHER_HAZARD_KEYWORDS.some(
+      (kw) => jha.taskDescription.toLowerCase().includes(kw) || jha.hazardsIdentified.toLowerCase().includes(kw),
+    ),
+  );
+  const suggestWeatherJha = job.weatherSensitivity !== 'INSENSITIVE' && !hasWeatherJha;
+
   // Today's log, if there is one — DailyLog's one-per-job-per-day constraint
   // means this is the record the log form below edits in place rather than
   // trying (and 409-ing) to create a second one for today.
@@ -224,6 +261,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           </div>
         </div>
       </div>
+
+      <RoleContextBanner role={actor.role} perms={perms} />
 
       {/* Readiness breakdown — decomposed, never a single opaque score */}
       <div className="card">
@@ -528,6 +567,13 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         {/* Job hazard analyses */}
         <div className="card">
           <h2 className="mb-3 font-semibold">Job hazard analyses</h2>
+          {suggestWeatherJha && (
+            <p className="mb-3 rounded-md border border-dashed border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+              This job is flagged {job.weatherSensitivity.toLowerCase()} to weather, and nothing on file here reads
+              like it covers exposure — consider filing a JHA for weather-related hazards (cold/heat stress,
+              wet-surface footing, wind on elevated work).
+            </p>
+          )}
           <HazardAnalysesEditor
             jobId={job.id}
             crew={crewOnJob}
@@ -566,10 +612,42 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         )}
       </div>
 
+      {/* Recent activity — the audit trail lib/audit.ts writes to, made
+          visible. Read-only: this is a log of what changed, not something
+          you act on from here. */}
+      <div className="card">
+        <h2 className="mb-3 font-semibold">Recent activity</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          Status changes on this job&apos;s permits, inspections, lien waivers, and safety incidents — the fields
+          most likely to be disputed later. Not every mutation in the app is logged, only these (see the
+          README&apos;s &quot;Scaling to enterprise&quot; section).
+        </p>
+        <ul className="divide-y divide-outdoor-border">
+          {recentActivity.map((entry) => (
+            <li key={entry.id} className="py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{ENTITY_TYPE_LABEL[entry.entityType] ?? entry.entityType}</span>
+                <span className="text-xs text-zinc-400">{entry.createdAt.toLocaleString()}</span>
+              </div>
+              <p className="mt-0.5 text-zinc-700">{entry.summary}</p>
+              <p className="mt-0.5 text-xs text-zinc-400">by {entry.actorLabel}</p>
+            </li>
+          ))}
+          {recentActivity.length === 0 && <p className="py-2 text-sm text-zinc-500">No audited changes on this job yet.</p>}
+        </ul>
+      </div>
+
       <WeatherPanel jobId={job.id} />
     </div>
   );
 }
+
+const ENTITY_TYPE_LABEL: Record<string, string> = {
+  Permit: 'Permit',
+  Inspection: 'Inspection',
+  LienWaiver: 'Lien waiver',
+  SafetyIncident: 'Safety incident',
+};
 
 function ReadinessRow({ label, status }: { label: string; status: ComponentStatus }) {
   return (
