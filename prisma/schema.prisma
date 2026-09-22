@@ -107,6 +107,7 @@ model Worker {
   incidentsReported       SafetyIncident[] @relation("IncidentReportedBy")
   incidentsInvolved       SafetyIncident[] @relation("IncidentInvolvedWorker")
   auditEntries            AuditLogEntry[]
+  hazardAnalysesPrepared  JobHazardAnalysis[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
