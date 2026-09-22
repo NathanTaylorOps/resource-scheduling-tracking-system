@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers';
 import { ViewingRole } from './enums';
+import { ACTOR_COOKIE } from './actor-cookie';
 
-export const ACTOR_COOKIE = 'rsts_actor';
+export { ACTOR_COOKIE };
 
 export interface ViewingActor {
   role: ViewingRole;

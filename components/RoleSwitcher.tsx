@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROLE_LABELS } from '@/lib/role';
-import { ACTOR_COOKIE } from '@/lib/actor';
+import { ACTOR_COOKIE } from '@/lib/actor-cookie';
 import { ViewingRole } from '@/lib/enums';
 
 const DEFAULT_ROLE: ViewingRole = 'EXECUTIVE';
