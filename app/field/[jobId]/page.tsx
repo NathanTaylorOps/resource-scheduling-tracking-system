@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { computeJobReadiness, DUE_SOON_WINDOW_DAYS, DAY_MS } from '@/lib/readiness-service';
 import { getCertificationStatus, summarizeCertificationStatuses } from '@/lib/domain/certifications';
 import { permitsStatusFrom } from '@/lib/domain/readiness';
@@ -20,6 +20,7 @@ export const dynamic = 'force-dynamic';
  * cross-job detail view at /jobs/[id].
  */
 export default async function FieldJobPage({ params }: { params: { jobId: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({
     where: { id: params.jobId },
     include: { assignments: { include: { worker: { include: { certifications: true } } }, orderBy: { roleOnJob: 'asc' } } },

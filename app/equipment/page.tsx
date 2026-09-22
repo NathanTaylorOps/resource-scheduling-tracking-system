@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { resolveCounterValue, resolveDueSoonWindow } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function EquipmentPage() {
+  const prisma = getDb();
   const equipment = await prisma.equipment.findMany({
     include: { compliance: true, lifeCounters: true },
     orderBy: { name: 'asc' },

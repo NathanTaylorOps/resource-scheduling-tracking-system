@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { WorkOrderStatus, WorkOrderSource, EquipmentStatus } from '@/lib/enums';
 import { applyCompletionToHierarchy } from '@/lib/domain/maintenance';
 import { resolveCounterValue, toDomainPlan } from '@/lib/readiness-service';
@@ -21,6 +21,7 @@ interface CompleteWorkOrderBody {
 class WorkOrderAlreadyCompletedError extends Error {}
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const workOrder = await prisma.workOrder.findUnique({ where: { id: params.id } });
   if (!workOrder) {
     return NextResponse.json({ error: 'Work order not found.' }, { status: 404 });

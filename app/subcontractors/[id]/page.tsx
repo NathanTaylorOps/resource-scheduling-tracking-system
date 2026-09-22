@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { StatusBadge, certificationBadge } from '@/components/StatusBadge';
@@ -10,6 +10,7 @@ import { AddCoiForm } from '@/components/AddCoiForm';
 export const dynamic = 'force-dynamic';
 
 export default async function SubcontractorDetailPage({ params }: { params: { id: string } }) {
+  const prisma = getDb();
   const subcontractor = await prisma.subcontractor.findUnique({
     where: { id: params.id },
     include: {

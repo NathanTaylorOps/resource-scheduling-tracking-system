@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { InspectionType, InspectionStatus } from '@/lib/enums';
 
 interface CreateInspectionBody {
@@ -11,6 +11,7 @@ const VALID_INSPECTION_TYPES = new Set<string>(Object.values(InspectionType));
 
 /** Adds one inspection to a permit's sequence, starting NOT_SCHEDULED. */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const permit = await prisma.permit.findUnique({ where: { id: params.id } });
   if (!permit) {
     return NextResponse.json({ error: 'No permit matches that id.' }, { status: 404 });

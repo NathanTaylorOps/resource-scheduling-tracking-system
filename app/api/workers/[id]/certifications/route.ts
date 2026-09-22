@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { RenewalPattern } from '@/lib/enums';
 
 interface CreateCertificationBody {
@@ -29,6 +29,7 @@ const VALID_RENEWAL_PATTERNS = new Set<string>(Object.values(RenewalPattern));
  * the renewal-pattern select doesn't block an otherwise-valid save.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const worker = await prisma.worker.findUnique({ where: { id: params.id } });
   if (!worker) {
     return NextResponse.json({ error: 'No worker matches that id.' }, { status: 404 });

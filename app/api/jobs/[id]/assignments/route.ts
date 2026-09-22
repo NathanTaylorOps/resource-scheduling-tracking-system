@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { canAssignWorker, parseCertTypesList } from '@/lib/domain/certifications';
 
 interface CreateAssignmentBody {
@@ -29,6 +29,7 @@ interface CreateAssignmentBody {
  * sometimes needs to book over a conflict on purpose and sort it out.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({ where: { id: params.id } });
   if (!job) {
     return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });

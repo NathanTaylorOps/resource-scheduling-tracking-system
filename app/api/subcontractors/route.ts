@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 interface CreateSubcontractorBody {
   businessName: string;
@@ -15,6 +15,7 @@ interface CreateSubcontractorBody {
  * entity here follows.
  */
 export async function POST(request: NextRequest) {
+  const prisma = getDb();
   let body: CreateSubcontractorBody;
   try {
     body = await request.json();

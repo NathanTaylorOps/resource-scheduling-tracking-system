@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import { JobStatus } from '@/lib/enums';
@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
  * components to find it.
  */
 export default async function FieldJobPickerPage() {
+  const prisma = getDb();
   const jobs = await prisma.job.findMany({
     where: { status: { in: [JobStatus.PLANNING, JobStatus.ACTIVE] } },
     orderBy: { name: 'asc' },

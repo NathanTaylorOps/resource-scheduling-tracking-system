@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 interface CreateReservationBody {
   jobId: string;
@@ -19,6 +19,7 @@ interface CreateReservationBody {
  * sort it out with whoever else has the asset.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const equipment = await prisma.equipment.findFirst({ where: { OR: [{ id: params.id }, { qrCode: params.id }] } });
   if (!equipment) {
     return NextResponse.json({ error: 'No equipment matches that id.' }, { status: 404 });

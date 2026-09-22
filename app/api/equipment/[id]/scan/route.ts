@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { ScanAction, WorkOrderSource, WorkOrderStatus } from '@/lib/enums';
 import { custodyUpdateFor, CustodyActionRejected } from '@/lib/domain/custody';
@@ -26,6 +26,7 @@ const VALID_ACTIONS = new Set<string>(Object.values(ScanAction));
  * its own new event, the same way a paper log would be corrected.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   // Only used to resolve the id-or-QR-code lookup and return a fast 404
   // before parsing the body. The transaction below re-reads the row by its
   // resolved id, so nothing about custody or status is decided from this

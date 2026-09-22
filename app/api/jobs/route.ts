@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { JobStatus, WeatherSensitivity } from '@/lib/enums';
 
 interface CreateJobBody {
@@ -22,6 +22,7 @@ interface CreateJobBody {
  * optional field could.
  */
 export async function POST(request: NextRequest) {
+  const prisma = getDb();
   let body: CreateJobBody;
   try {
     body = await request.json();

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { JobStatus } from '@/lib/enums';
 import { EquipmentScanForm } from '@/components/EquipmentScanForm';
 
@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
  * client form that actually records the scan.
  */
 export default async function EquipmentScanActionPage({ params }: { params: { id: string } }) {
+  const prisma = getDb();
   const equipment = await prisma.equipment.findFirst({
     where: { OR: [{ id: params.id }, { qrCode: params.id }] },
   });

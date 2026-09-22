@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { CreateJobForm } from '@/components/CreateJobForm';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function JobsPage() {
+  const prisma = getDb();
   const jobs = await prisma.job.findMany({ orderBy: { startDate: 'asc' } });
 
   return (

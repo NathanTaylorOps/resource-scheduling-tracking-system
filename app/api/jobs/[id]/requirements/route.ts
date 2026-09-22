@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { parseCertTypesList } from '@/lib/domain/certifications';
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -34,6 +34,7 @@ interface CreateRequirementBody {
  * with possibly different required certs, so it's rejected here instead.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({ where: { id: params.id } });
   if (!job) {
     return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });

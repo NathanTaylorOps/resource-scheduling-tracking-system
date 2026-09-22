@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import type { ComponentStatus } from '@/lib/domain/readiness';
@@ -9,6 +9,7 @@ import { CircleCheck, TriangleAlert, CircleX, CircleHelp } from 'lucide-react';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
+  const prisma = getDb();
   const jobs = await prisma.job.findMany({
     where: { status: { in: ['ACTIVE', 'PLANNING'] } },
     orderBy: { startDate: 'asc' },
@@ -105,6 +106,7 @@ function SummaryTile({ label, value, tone }: { label: string; value: number; ton
 }
 
 async function getDueSoonCertCount(): Promise<number> {
+  const prisma = getDb();
   const now = new Date();
   const certs = await prisma.workerCertification.findMany();
   // Matches the tile's own label exactly: 'expiring_soon' and 'expired' are

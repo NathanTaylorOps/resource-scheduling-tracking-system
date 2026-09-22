@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { PermitType, PermitStatus } from '@/lib/enums';
 
 interface CreatePermitBody {
@@ -21,6 +21,7 @@ const VALID_PERMIT_TYPES = new Set<string>(Object.values(PermitType));
  * real jurisdiction orders them.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({ where: { id: params.id } });
   if (!job) {
     return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });

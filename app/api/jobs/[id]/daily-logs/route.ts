@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -24,6 +24,7 @@ interface CreateDailyLogBody {
  * to silently overwrite.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({ where: { id: params.id } });
   if (!job) {
     return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });

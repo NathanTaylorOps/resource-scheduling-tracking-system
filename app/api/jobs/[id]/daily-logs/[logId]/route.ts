@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 interface UpdateDailyLogBody {
   weatherSummary?: string;
@@ -21,6 +21,7 @@ interface UpdateDailyLogBody {
  * after the fact.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string; logId: string } }) {
+  const prisma = getDb();
   const log = await prisma.dailyLog.findUnique({ where: { id: params.logId } });
   if (!log || log.jobId !== params.id) {
     return NextResponse.json({ error: 'No matching daily log for this job.' }, { status: 404 });

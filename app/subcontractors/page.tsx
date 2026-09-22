@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -8,6 +8,7 @@ import { CreateSubcontractorForm } from '@/components/CreateSubcontractorForm';
 export const dynamic = 'force-dynamic';
 
 export default async function SubcontractorsPage() {
+  const prisma = getDb();
   const subcontractors = await prisma.subcontractor.findMany({
     include: { coiRecords: true, workers: true },
     orderBy: { businessName: 'asc' },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { InspectionStatus, ReinspectionChannel } from '@/lib/enums';
 
 interface UpdateInspectionBody {
@@ -25,6 +25,7 @@ const VALID_CHANNELS = new Set<string>(Object.values(ReinspectionChannel));
  * history.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const inspection = await prisma.inspection.findUnique({ where: { id: params.id } });
   if (!inspection) {
     return NextResponse.json({ error: 'No inspection matches that id.' }, { status: 404 });

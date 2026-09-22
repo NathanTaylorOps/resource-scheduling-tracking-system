@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { CoverageType } from '@/lib/enums';
 
 interface CreateCoiBody {
@@ -23,6 +23,7 @@ const VALID_COVERAGE_TYPES = new Set<string>(Object.values(CoverageType));
  * getCertificationStatus reads as current once its expiryDate passes.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const subcontractor = await prisma.subcontractor.findUnique({ where: { id: params.id } });
   if (!subcontractor) {
     return NextResponse.json({ error: 'No subcontractor matches that id.' }, { status: 404 });

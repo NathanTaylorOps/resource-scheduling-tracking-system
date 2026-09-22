@@ -15,7 +15,7 @@
  * toDomainPlan, for instance, and previously each had its own copy.
  */
 
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
 import { findEquipmentConflicts } from '@/lib/domain/equipment';
 import { getCertificationStatus } from '@/lib/domain/certifications';
@@ -125,6 +125,7 @@ export function toDomainPlan(plan: {
 }
 
 export async function computeJobReadiness(jobId: string): Promise<ReadinessResult> {
+  const prisma = getDb();
   const now = new Date();
 
   // The queries below split into two waves rather than running one after

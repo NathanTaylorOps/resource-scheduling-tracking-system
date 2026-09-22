@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 /**
  * Removes a mis-logged toolbox talk. A hard delete, the same treatment
@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db';
  * correction path here rather than an edit-in-place.
  */
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string; meetingId: string } }) {
+  const prisma = getDb();
   const meeting = await prisma.safetyMeeting.findUnique({ where: { id: params.meetingId } });
   if (!meeting || meeting.jobId !== params.id) {
     return NextResponse.json({ error: 'No matching toolbox talk for this job.' }, { status: 404 });

@@ -16,6 +16,10 @@
 # database
 /prisma/dev.db
 /prisma/dev.db-journal
+# built once locally or at deploy time via `npm run db:build-template` —
+# see lib/db.ts and README, "Getting started"
+/prisma/template.db
+/prisma/template.db-journal
 
 # misc
 .DS_Store

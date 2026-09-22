@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
 import { findOverlaps, findUnfilledRoles, type Assignment as OverlapAssignment } from '@/lib/domain/scheduling';
 import { findEquipmentConflicts } from '@/lib/domain/equipment';
@@ -19,6 +19,7 @@ import { ToolboxTalkList } from '@/components/ToolboxTalkList';
 export const dynamic = 'force-dynamic';
 
 export default async function JobDetailPage({ params }: { params: { id: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({
     where: { id: params.id },
     include: {

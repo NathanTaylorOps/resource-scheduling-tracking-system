@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { EmploymentType } from '@/lib/enums';
 
 interface CreateWorkerBody {
@@ -23,6 +23,7 @@ interface CreateWorkerBody {
  * Worker/Subcontractor relation's own comment in schema.prisma).
  */
 export async function POST(request: NextRequest) {
+  const prisma = getDb();
   let body: CreateWorkerBody;
   try {
     body = await request.json();

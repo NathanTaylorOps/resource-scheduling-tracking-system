@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { calculateUtilization } from '@/lib/domain/scheduling';
@@ -10,6 +10,7 @@ import { AddCertificationForm } from '@/components/AddCertificationForm';
 export const dynamic = 'force-dynamic';
 
 export default async function WorkerDetailPage({ params }: { params: { id: string } }) {
+  const prisma = getDb();
   const worker = await prisma.worker.findUnique({
     where: { id: params.id },
     include: {

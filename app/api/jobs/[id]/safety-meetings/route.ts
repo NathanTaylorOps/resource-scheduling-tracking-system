@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 interface CreateSafetyMeetingBody {
   meetingDate: string;
@@ -23,6 +23,7 @@ interface CreateSafetyMeetingBody {
  * raw foreign-key constraint failure.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({ where: { id: params.id } });
   if (!job) {
     return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });

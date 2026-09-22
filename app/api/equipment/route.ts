@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { EquipmentStatus } from '@/lib/enums';
 
 interface CreateEquipmentBody {
@@ -21,6 +21,7 @@ const MAX_QR_RETRIES = 1;
  * asset-tag number is assigned by whoever's running the yard, not invented
  * by whoever's typing the intake form. */
 async function nextQrCode(): Promise<string> {
+  const prisma = getDb();
   const existing = await prisma.equipment.findMany({
     where: { qrCode: { startsWith: QR_PREFIX } },
     select: { qrCode: true },
@@ -38,6 +39,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const prisma = getDb();
   let body: CreateEquipmentBody;
   try {
     body = await request.json();

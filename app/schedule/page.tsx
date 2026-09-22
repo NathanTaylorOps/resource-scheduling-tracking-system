@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { findOverlaps, type Assignment as DomainAssignment } from '@/lib/domain/scheduling';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,7 @@ const WINDOW_DAYS = 21;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default async function SchedulePage() {
+  const prisma = getDb();
   const windowStart = startOfDay(new Date());
   const windowEnd = new Date(windowStart.getTime() + WINDOW_DAYS * DAY_MS);
 

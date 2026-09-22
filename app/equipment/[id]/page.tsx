@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { resolveCounterValue, resolveDueSoonWindow, toDomainPlan } from '@/lib/readiness-service';
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue } from '@/lib/domain/forecasting';
@@ -16,6 +16,7 @@ import { JobStatus } from '@/lib/enums';
 export const dynamic = 'force-dynamic';
 
 export default async function EquipmentDetailPage({ params }: { params: { id: string } }) {
+  const prisma = getDb();
   const equipment = await prisma.equipment.findFirst({
     where: { OR: [{ id: params.id }, { qrCode: params.id }] },
     include: {

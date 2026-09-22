@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 interface UpdateLicenseBody {
   licenseNumber?: string;
@@ -14,6 +14,7 @@ interface UpdateLicenseBody {
  * model, so a renewal overwrites rather than adding a new row.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  const prisma = getDb();
   const subcontractor = await prisma.subcontractor.findUnique({ where: { id: params.id } });
   if (!subcontractor) {
     return NextResponse.json({ error: 'No subcontractor matches that id.' }, { status: 404 });

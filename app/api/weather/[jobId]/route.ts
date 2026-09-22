@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { fetchNwsForecast } from '@/lib/weather/nws';
 import { fetchClimatologicalOutlook } from '@/lib/weather/outlook';
 
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: { jobId: 
 }
 
 async function handle(jobId: string, force: boolean) {
+  const prisma = getDb();
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
@@ -50,6 +51,7 @@ async function refreshLayer<T>(
   force: boolean,
   fetcher: () => Promise<T>,
 ): Promise<LayerResult<T>> {
+  const prisma = getDb();
   const existing = await prisma.weatherCache.findUnique({ where: { jobId_layer: { jobId, layer } } });
   const isStale = !existing || existing.staleAfter < new Date();
 

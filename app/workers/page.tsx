@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -8,6 +8,7 @@ import { CreateWorkerForm } from '@/components/CreateWorkerForm';
 export const dynamic = 'force-dynamic';
 
 export default async function WorkersPage() {
+  const prisma = getDb();
   const workers = await prisma.worker.findMany({
     include: { certifications: true },
     orderBy: { name: 'asc' },
