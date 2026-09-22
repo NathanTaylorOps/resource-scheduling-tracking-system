@@ -36,7 +36,7 @@ services:
       # template-database build) — the running app gives each visitor their
       # own database instead; see lib/db.ts.
       - key: DATABASE_URL
-        value: file:./prisma/template.db
+        value: file:./template.db
       # NWS's usage policy asks for a descriptive User-Agent identifying the
       # app and a real contact — left blank here on purpose rather than
       # committed to a public repo; set it in Render's dashboard when you
