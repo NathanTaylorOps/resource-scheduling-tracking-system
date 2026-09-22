@@ -51,9 +51,32 @@ model Job {
   permits        Permit[]
   dailyLogs      DailyLog[]
   safetyMeetings SafetyMeeting[]
+  lienWaivers    LienWaiver[]
+  safetyIncidents SafetyIncident[]
+  hazardAnalyses JobHazardAnalysis[]
+  payrollEntries CertifiedPayrollEntry[]
+
+  // Which regional office/business unit this job belongs to — nullable
+  // because a single-office company (like the fictional Coastwood Builders
+  // this demo is seeded around) has no real use for it, but a portfolio
+  // spanning several offices does. See app/portfolio/page.tsx, the rollup
+  // view this field exists for — company-wide "which region is trending
+  // worse" is exactly the visibility a single flat job list can't give a
+  // COO or regional Project Executive.
+  division       String?
+
+  // Gates whether CertifiedPayrollEntry rows apply to this job — a job
+  // touching public money or otherwise contractually bound to Davis-Bacon-
+  // style prevailing wage reporting needs weekly certified payroll on
+  // file; a private residential job never does. A plain boolean rather
+  // than inferring it from job type, since the real determinant is the
+  // contract, not the building.
+  certifiedPayrollRequired Boolean @default(false)
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  @@index([division])
 }
 
 model Worker {
@@ -79,6 +102,11 @@ model Worker {
   dailyLogsSubmitted      DailyLog[]
   safetyMeetingsConducted SafetyMeeting[]
   safetyMeetingAttendance SafetyMeetingAttendee[]
+  screenings              WorkerScreening[]
+  payrollEntries          CertifiedPayrollEntry[]
+  incidentsReported       SafetyIncident[] @relation("IncidentReportedBy")
+  incidentsInvolved       SafetyIncident[] @relation("IncidentInvolvedWorker")
+  auditEntries            AuditLogEntry[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -106,6 +134,7 @@ model Subcontractor {
 
   workers                 Worker[]
   coiRecords              SubcontractorCOI[]
+  lienWaivers             LienWaiver[]
 
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
@@ -576,4 +605,199 @@ model SafetyMeetingAttendee {
   worker          Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
   @@unique([safetyMeetingId, workerId])
+}
+
+// ---------------------------------------------------------------------------
+// Enterprise-scale additions — see the README's "Scaling to enterprise"
+// section for the reasoning behind each of these. They're real, usable
+// features built on this app's existing per-visitor demo architecture, not
+// a claim that this is now a certified-payroll or lien-tracking system of
+// record.
+// ---------------------------------------------------------------------------
+
+// A conditional/unconditional, progress/final lien waiver exchanged with a
+// subcontractor against a specific pay period — the single biggest gap two
+// independent enterprise-scale reviews of this app converged on
+// unprompted. At real GC scale (dozens of subs, tens of millions per job),
+// tracking which waiver is outstanding for which pay period is a constant,
+// high-stakes administrative burden: a missing waiver blocks the GC's own
+// pay application to the owner. One row per sub per pay period per waiver
+// type — a sub can owe more than one type in the same period (e.g. a
+// conditional waiver at submission, replaced by an unconditional waiver
+// once that payment actually clears), so this is deliberately not a
+// single status field on the pay period itself.
+model LienWaiver {
+  id                String   @id @default(cuid())
+  jobId             String
+  subcontractorId   String
+  payPeriodStart    DateTime
+  payPeriodEnd      DateTime
+  waiverType        String
+  amount            Float?
+  status            String   @default("PENDING")
+  receivedDate      DateTime?
+  notes             String?
+
+  job               Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  subcontractor     Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jobId])
+  @@index([subcontractorId])
+}
+
+// A near miss, injury, property-damage, or environmental incident — the
+// leading-indicator safety record a toolbox talk (SafetyMeeting above)
+// deliberately isn't: a toolbox talk proves a briefing happened, this
+// records what actually went wrong (or almost did). NEAR_MISS is its own
+// first-class type rather than a low-severity INJURY specifically so it
+// doesn't get buried in exactly the trend report meant to surface it —
+// near-miss rate is the metric a mature safety program actually watches.
+// This is explicitly NOT an OSHA 300-series recordkeeping system (Forms
+// 300/300A/301) — that's its own regulated system with its own
+// recordability rules and retention requirements, and a partial,
+// non-compliant version of it would be worse than not building one, same
+// call the README already makes about toolbox talks vs. OSHA logs.
+model SafetyIncident {
+  id                String   @id @default(cuid())
+  jobId             String
+  incidentType      String
+  severity          String
+  occurredAt        DateTime
+  description       String
+  correctionAction  String?
+  status            String   @default("OPEN")
+
+  reportedByWorkerId String?
+  involvedWorkerId   String?
+
+  job                Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  reportedByWorker   Worker? @relation("IncidentReportedBy", fields: [reportedByWorkerId], references: [id])
+  involvedWorker     Worker? @relation("IncidentInvolvedWorker", fields: [involvedWorkerId], references: [id])
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jobId])
+}
+
+// A job hazard analysis / job safety analysis for one task on one job —
+// the hazards identified and the controls put in place before the task
+// starts, not after something goes wrong (that's SafetyIncident above).
+// Deliberately a simple text record rather than a structured
+// hazard-by-hazard checklist: a real JHA program has its own
+// task-specific templates (a pour JHA looks nothing like a crane-lift
+// JHA), and building one generic structured form here would either be too
+// rigid for real use or too shallow to actually replace a real JHA
+// program — the honest v1 is a record that a JHA was done and what it
+// says, the same scope call SafetyMeeting already makes for toolbox talks.
+model JobHazardAnalysis {
+  id                String   @id @default(cuid())
+  jobId             String
+  taskDescription   String
+  hazardsIdentified String
+  controlMeasures   String
+  preparedByWorkerId String?
+  reviewDate        DateTime
+
+  job               Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  preparedByWorker  Worker? @relation(fields: [preparedByWorkerId], references: [id])
+
+  createdAt         DateTime @default(now())
+
+  @@index([jobId])
+}
+
+// A drug test or background check result for a worker — distinct from
+// WorkerCertification (a trade credential with a renewal cycle) and from
+// SubcontractorCOI (firm-level insurance): this is a point-in-time
+// screening result with no renewal math of its own. At the scale of a
+// large sub workforce, many owners contractually require this on file
+// before someone can badge onto a job site, and it currently had nowhere
+// to live — it isn't a certification and it isn't insurance.
+model WorkerScreening {
+  id              String    @id @default(cuid())
+  workerId        String
+  screeningType   String
+  result          String
+  administeredDate DateTime
+  expiryDate      DateTime?
+  notes           String?
+
+  worker          Worker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now())
+
+  @@index([workerId])
+}
+
+// One worker's classification, hours, and pay rate for one week on a job
+// that requires certified payroll (Job.certifiedPayrollRequired) — the
+// weekly WH-347-style record a labor compliance office actually audits on
+// a prevailing-wage job. Deliberately not a full payroll system: no tax
+// withholding, no net pay, no direct deposit — those live in the real
+// ERP/payroll system (Viewpoint, Sage 300 CRE, CMiC) this app would need
+// to integrate with at real scale, not duplicate. This is the
+// classification-and-hours record that has to exist for the compliance
+// report, nothing past it.
+model CertifiedPayrollEntry {
+  id             String   @id @default(cuid())
+  jobId          String
+  workerId       String
+  weekEnding     DateTime
+  classification String
+  hoursWorked    Float
+  hourlyRate     Float?
+  fringeRate     Float?
+  status         String   @default("DRAFT")
+
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker         Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+
+  @@unique([jobId, workerId, weekEnding])
+  @@index([jobId])
+  @@index([workerId])
+}
+
+// An append-only record of who changed what, and when — the sharpest gap
+// an engineering-scale review of this app found: every other model here
+// carries only createdAt/updatedAt, which get silently overwritten on
+// every edit. For a GC facing warranty claims and litigation years after a
+// job closes, "who marked this permit ISSUED, and when" is exactly the
+// kind of question that shows up in a deposition, and today most of this
+// app's mutations can't answer it. Deliberately NOT a full field-by-field
+// diff engine — that's real complexity for real production value, and
+// this demo's no-auth design means "actor" is self-reported (see
+// actorLabel) rather than cryptographically attributable anyway. What this
+// gives instead: a durable, human-readable trail — who (as best this
+// app can know, given it has no real login), what changed, and when —
+// for the handful of high-stakes mutations actually wired to call
+// recordAudit (see lib/audit.ts): permit status changes, inspection
+// outcomes, lien waiver status, and safety incident status. Never edited
+// or deleted once written, the same append-only principle ScanEvent
+// already uses for equipment chain-of-custody.
+model AuditLogEntry {
+  id           String   @id @default(cuid())
+  entityType   String
+  entityId     String
+  action       String
+  summary      String
+
+  actorWorkerId String?
+  // The free-text fallback when no worker is selected as the acting
+  // "viewing as" identity (see lib/role.ts) — still recorded rather than
+  // left blank, since "an unattributed change happened" is itself a fact
+  // worth keeping, not one to silently drop.
+  actorLabel    String
+
+  actorWorker   Worker?  @relation(fields: [actorWorkerId], references: [id])
+
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

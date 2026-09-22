@@ -159,3 +159,89 @@ export const CoverageType = {
   PROFESSIONAL_LIABILITY: 'PROFESSIONAL_LIABILITY',
 } as const;
 export type CoverageType = (typeof CoverageType)[keyof typeof CoverageType];
+
+// --- Enterprise-scale additions: lien waivers, safety incidents, JHAs,
+// worker screening, certified payroll, and the audit log. See the README's
+// "Scaling to enterprise" section for what each of these is (and isn't) —
+// these are real, usable domain features, not a full compliance-department
+// replacement.
+
+// The four waiver shapes a GC actually tracks against a pay application:
+// conditional (takes effect once the payment clears) vs. unconditional
+// (takes effect immediately, so it should only be exchanged for a payment
+// already in hand), and progress (this pay period) vs. final (the last
+// dollar owed on the contract). Mixing these up is exactly the kind of
+// mistake that costs real money — an unconditional waiver signed before
+// payment clears gives up lien rights with nothing to show for it.
+export const LienWaiverType = {
+  CONDITIONAL_PROGRESS: 'CONDITIONAL_PROGRESS',
+  UNCONDITIONAL_PROGRESS: 'UNCONDITIONAL_PROGRESS',
+  CONDITIONAL_FINAL: 'CONDITIONAL_FINAL',
+  UNCONDITIONAL_FINAL: 'UNCONDITIONAL_FINAL',
+} as const;
+export type LienWaiverType = (typeof LienWaiverType)[keyof typeof LienWaiverType];
+
+export const LienWaiverStatus = {
+  PENDING: 'PENDING',
+  RECEIVED: 'RECEIVED',
+  DISPUTED: 'DISPUTED',
+} as const;
+export type LienWaiverStatus = (typeof LienWaiverStatus)[keyof typeof LienWaiverStatus];
+
+// A near miss is deliberately its own first-class type, not a lesser
+// severity of INJURY — it's the leading indicator a real safety program
+// actually tracks trends against, and burying it as "low severity injury"
+// would make it invisible in exactly the reports meant to surface it.
+export const IncidentType = {
+  NEAR_MISS: 'NEAR_MISS',
+  INJURY: 'INJURY',
+  PROPERTY_DAMAGE: 'PROPERTY_DAMAGE',
+  ENVIRONMENTAL: 'ENVIRONMENTAL',
+} as const;
+export type IncidentType = (typeof IncidentType)[keyof typeof IncidentType];
+
+export const IncidentSeverity = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+} as const;
+export type IncidentSeverity = (typeof IncidentSeverity)[keyof typeof IncidentSeverity];
+
+export const IncidentStatus = {
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+} as const;
+export type IncidentStatus = (typeof IncidentStatus)[keyof typeof IncidentStatus];
+
+export const ScreeningType = {
+  DRUG_TEST: 'DRUG_TEST',
+  BACKGROUND_CHECK: 'BACKGROUND_CHECK',
+} as const;
+export type ScreeningType = (typeof ScreeningType)[keyof typeof ScreeningType];
+
+export const ScreeningResult = {
+  PASS: 'PASS',
+  FAIL: 'FAIL',
+  PENDING: 'PENDING',
+} as const;
+export type ScreeningResult = (typeof ScreeningResult)[keyof typeof ScreeningResult];
+
+export const PayrollEntryStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+} as const;
+export type PayrollEntryStatus = (typeof PayrollEntryStatus)[keyof typeof PayrollEntryStatus];
+
+// The "viewing as" role switcher (see components/RoleSwitcher.tsx and
+// lib/role.ts) — a UI-only demonstration of role-scoped views, explicitly
+// NOT real access control. See lib/role.ts for what that distinction means
+// and why it matters.
+export const ViewingRole = {
+  EXECUTIVE: 'EXECUTIVE',
+  PROJECT_MANAGER: 'PROJECT_MANAGER',
+  SUPERINTENDENT: 'SUPERINTENDENT',
+  SAFETY_DIRECTOR: 'SAFETY_DIRECTOR',
+  SUBCONTRACTOR: 'SUBCONTRACTOR',
+  FIELD_WORKER: 'FIELD_WORKER',
+} as const;
+export type ViewingRole = (typeof ViewingRole)[keyof typeof ViewingRole];

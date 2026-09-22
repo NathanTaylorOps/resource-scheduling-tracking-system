@@ -55,7 +55,18 @@ interface PermitData {
   inspections: InspectionData[];
 }
 
-export function PermitsEditor({ jobId, permits }: { jobId: string; permits: PermitData[] }) {
+export function PermitsEditor({
+  jobId,
+  permits,
+  canApprovePermits = true,
+}: {
+  jobId: string;
+  permits: PermitData[];
+  /** Hides the status-edit toggle on permits and inspections when false —
+   * see lib/role.ts's canApprovePermits doc comment. Defaults to true so
+   * existing callers that haven't been updated keep today's behavior. */
+  canApprovePermits?: boolean;
+}) {
   const router = useRouter();
   const [addingPermit, setAddingPermit] = useState(false);
 
@@ -63,7 +74,7 @@ export function PermitsEditor({ jobId, permits }: { jobId: string; permits: Perm
     <div>
       <ul className="divide-y divide-outdoor-border">
         {permits.map((p) => (
-          <PermitRow key={p.id} permit={p} onChanged={() => router.refresh()} />
+          <PermitRow key={p.id} permit={p} canApprovePermits={canApprovePermits} onChanged={() => router.refresh()} />
         ))}
         {permits.length === 0 && <p className="py-2 text-sm text-zinc-500">No permits filed for this job.</p>}
       </ul>
@@ -250,11 +261,19 @@ function EditPermitForm({ permit: p, onDone, onCancel }: { permit: PermitData; o
   );
 }
 
-function PermitRow({ permit: p, onChanged }: { permit: PermitData; onChanged: () => void }) {
+function PermitRow({
+  permit: p,
+  canApprovePermits,
+  onChanged,
+}: {
+  permit: PermitData;
+  canApprovePermits: boolean;
+  onChanged: () => void;
+}) {
   const [addingInspection, setAddingInspection] = useState(false);
   const [editingPermit, setEditingPermit] = useState(false);
 
-  if (editingPermit) {
+  if (editingPermit && canApprovePermits) {
     return (
       <li className="py-2">
         <EditPermitForm permit={p} onDone={() => { setEditingPermit(false); onChanged(); }} onCancel={() => setEditingPermit(false)} />
@@ -280,22 +299,24 @@ function PermitRow({ permit: p, onChanged }: { permit: PermitData; onChanged: ()
             status={p.isExpired ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
             label={p.isExpired ? 'Expired' : titleCase(p.status)}
           />
-          <button
-            type="button"
-            onClick={() => setEditingPermit(true)}
-            aria-label={`Update ${titleCase(p.permitType)} permit — mark issued, set its permit number or expiry, or file a renewal`}
-            title="Update status, permit number, or dates — including filing a renewal"
-            className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+          {canApprovePermits && (
+            <button
+              type="button"
+              onClick={() => setEditingPermit(true)}
+              aria-label={`Update ${titleCase(p.permitType)} permit — mark issued, set its permit number or expiry, or file a renewal`}
+              title="Update status, permit number, or dates — including filing a renewal"
+              className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
 
       {p.inspections.length > 0 && (
         <ul className="mt-2 space-y-1 border-l border-outdoor-border pl-3">
           {p.inspections.map((i) => (
-            <InspectionRow key={i.id} inspection={i} onChanged={onChanged} />
+            <InspectionRow key={i.id} inspection={i} canApprovePermits={canApprovePermits} onChanged={onChanged} />
           ))}
         </ul>
       )}
@@ -383,10 +404,18 @@ function AddInspectionForm({
   );
 }
 
-function InspectionRow({ inspection: i, onChanged }: { inspection: InspectionData; onChanged: () => void }) {
+function InspectionRow({
+  inspection: i,
+  canApprovePermits,
+  onChanged,
+}: {
+  inspection: InspectionData;
+  canApprovePermits: boolean;
+  onChanged: () => void;
+}) {
   const [editing, setEditing] = useState(false);
 
-  if (editing) {
+  if (editing && canApprovePermits) {
     return (
       <li className="text-xs">
         <InspectionOutcomeForm inspection={i} onDone={() => { setEditing(false); onChanged(); }} onCancel={() => setEditing(false)} />
@@ -402,14 +431,16 @@ function InspectionRow({ inspection: i, onChanged }: { inspection: InspectionDat
           <span className={i.status === 'FAILED' ? 'font-medium text-red-700' : i.status === 'PASSED' ? 'text-green-700' : 'text-zinc-500'}>
             {i.status === 'SCHEDULED' && i.scheduledDate ? `scheduled ${new Date(i.scheduledDate).toLocaleDateString()}` : titleCase(i.status)}
           </span>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            aria-label={`Update ${titleCase(i.inspectionType)} inspection`}
-            className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
-          >
-            <Pencil className="h-3 w-3" aria-hidden="true" />
-          </button>
+          {canApprovePermits && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Update ${titleCase(i.inspectionType)} inspection`}
+              className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
+            >
+              <Pencil className="h-3 w-3" aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
       {i.status === 'FAILED' && (i.correctionNotes || i.reinspectionScheduledDate) && (

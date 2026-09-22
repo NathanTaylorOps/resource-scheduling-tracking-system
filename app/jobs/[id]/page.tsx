@@ -15,11 +15,19 @@ import { PermitsEditor } from '@/components/PermitsEditor';
 import { DailyLogForm } from '@/components/DailyLogForm';
 import { ToolboxTalkForm } from '@/components/ToolboxTalkForm';
 import { ToolboxTalkList } from '@/components/ToolboxTalkList';
+import { LienWaiversEditor } from '@/components/LienWaiversEditor';
+import { SafetyIncidentsEditor } from '@/components/SafetyIncidentsEditor';
+import { HazardAnalysesEditor } from '@/components/HazardAnalysesEditor';
+import { PayrollEntriesEditor } from '@/components/PayrollEntriesEditor';
+import { getViewingActor } from '@/lib/actor';
+import { permissionsFor } from '@/lib/role';
 
 export const dynamic = 'force-dynamic';
 
 export default async function JobDetailPage({ params }: { params: { id: string } }) {
   const prisma = getDb();
+  const actor = getViewingActor();
+  const perms = permissionsFor(actor.role);
   const job = await prisma.job.findUnique({
     where: { id: params.id },
     include: {
@@ -140,6 +148,41 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     where: { jobId: job.id },
     include: { conductedByWorker: true, attendees: { include: { worker: true } } },
     orderBy: { meetingDate: 'desc' },
+  });
+
+  // --- Lien waivers, safety incidents, JHAs, and (if required) certified
+  // payroll: separate queries rather than folded into the job include
+  // above, matching this file's existing pattern for permits/dailyLogs/
+  // safetyMeetings just above ---
+  const lienWaivers = await prisma.lienWaiver.findMany({
+    where: { jobId: job.id },
+    include: { subcontractor: { select: { id: true, businessName: true } } },
+    orderBy: { payPeriodStart: 'desc' },
+  });
+  const safetyIncidents = await prisma.safetyIncident.findMany({
+    where: { jobId: job.id },
+    include: { reportedByWorker: true, involvedWorker: true },
+    orderBy: { occurredAt: 'desc' },
+  });
+  const hazardAnalyses = await prisma.jobHazardAnalysis.findMany({
+    where: { jobId: job.id },
+    include: { preparedByWorker: true },
+    orderBy: { reviewDate: 'desc' },
+  });
+  const payrollEntries = job.certifiedPayrollRequired
+    ? await prisma.certifiedPayrollEntry.findMany({
+        where: { jobId: job.id },
+        include: { worker: { select: { id: true, name: true } } },
+        orderBy: { weekEnding: 'desc' },
+      })
+    : [];
+
+  // Any contracted subcontractor firm is waiver-able against this job, not
+  // just one with a worker currently assigned here — a lien waiver tracks
+  // the contract, not today's staffing.
+  const allSubcontractors = await prisma.subcontractor.findMany({
+    select: { id: true, businessName: true },
+    orderBy: { businessName: 'asc' },
   });
 
   // Today's log, if there is one — DailyLog's one-per-job-per-day constraint
@@ -340,6 +383,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <h2 className="mb-3 font-semibold">Permits &amp; inspections</h2>
           <PermitsEditor
             jobId={job.id}
+            canApprovePermits={perms.canApprovePermits}
             permits={permits.map((p) => ({
               id: p.id,
               permitType: p.permitType,
@@ -434,6 +478,92 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           />
           <ToolboxTalkForm jobId={job.id} crew={crewOnJob} />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Lien waivers — pay-application lien-rights tracking, not a readiness gate */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Lien waivers</h2>
+          <LienWaiversEditor
+            jobId={job.id}
+            subcontractors={allSubcontractors}
+            canViewFinancials={perms.canViewFinancials}
+            waivers={lienWaivers.map((w) => ({
+              id: w.id,
+              subcontractor: { id: w.subcontractor.id, businessName: w.subcontractor.businessName },
+              waiverType: w.waiverType,
+              payPeriodStart: w.payPeriodStart.toISOString(),
+              payPeriodEnd: w.payPeriodEnd.toISOString(),
+              amount: w.amount,
+              status: w.status,
+              receivedDate: w.receivedDate?.toISOString() ?? null,
+              notes: w.notes,
+            }))}
+          />
+        </div>
+
+        {/* Safety incidents */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Safety incidents</h2>
+          <SafetyIncidentsEditor
+            jobId={job.id}
+            crew={crewOnJob}
+            canManageSafety={perms.canManageSafety}
+            incidents={safetyIncidents.map((i) => ({
+              id: i.id,
+              incidentType: i.incidentType,
+              severity: i.severity,
+              occurredAt: i.occurredAt.toISOString(),
+              description: i.description,
+              correctionAction: i.correctionAction,
+              status: i.status,
+              reportedByWorker: i.reportedByWorker ? { id: i.reportedByWorker.id, name: i.reportedByWorker.name } : null,
+              involvedWorker: i.involvedWorker ? { id: i.involvedWorker.id, name: i.involvedWorker.name } : null,
+            }))}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Job hazard analyses */}
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Job hazard analyses</h2>
+          <HazardAnalysesEditor
+            jobId={job.id}
+            crew={crewOnJob}
+            canManageSafety={perms.canManageSafety}
+            analyses={hazardAnalyses.map((jha) => ({
+              id: jha.id,
+              taskDescription: jha.taskDescription,
+              hazardsIdentified: jha.hazardsIdentified,
+              controlMeasures: jha.controlMeasures,
+              reviewDate: jha.reviewDate.toISOString(),
+              preparedByWorker: jha.preparedByWorker ? { id: jha.preparedByWorker.id, name: jha.preparedByWorker.name } : null,
+            }))}
+          />
+        </div>
+
+        {/* Certified payroll — only for jobs contractually bound to it (see Job.certifiedPayrollRequired) */}
+        {job.certifiedPayrollRequired && (
+          <div className="card">
+            <h2 className="mb-3 font-semibold">Certified payroll</h2>
+            <PayrollEntriesEditor
+              jobId={job.id}
+              crew={crewOnJob}
+              canViewFinancials={perms.canViewFinancials}
+              entries={payrollEntries.map((e) => ({
+                id: e.id,
+                worker: { id: e.worker.id, name: e.worker.name },
+                weekEnding: e.weekEnding.toISOString(),
+                classification: e.classification,
+                hoursWorked: e.hoursWorked,
+                hourlyRate: e.hourlyRate,
+                fringeRate: e.fringeRate,
+                status: e.status,
+              }))}
+            />
+          </div>
+        )}
       </div>
 
       <WeatherPanel jobId={job.id} />

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { PermitStatus } from '@/lib/enums';
+import { recordAudit } from '@/lib/audit';
 
 interface UpdatePermitBody {
   status: string;
@@ -65,14 +66,30 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     );
   }
 
-  const updated = await prisma.permit.update({
-    where: { id: permit.id },
-    data: {
-      status: body.status,
-      permitNumber: body.permitNumber?.trim() || null,
-      issuedDate,
-      expiryDate,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.permit.update({
+      where: { id: permit.id },
+      data: {
+        status: body.status,
+        permitNumber: body.permitNumber?.trim() || null,
+        issuedDate,
+        expiryDate,
+      },
+    });
+    // Permit status is exactly the kind of fact that shows up in a
+    // deposition years after a job closes — "who marked this ISSUED, and
+    // when" — so this is one of the handful of mutations wired to
+    // lib/audit.ts. See that file and AuditLogEntry's own comment for what
+    // this does and doesn't guarantee.
+    if (permit.status !== body.status) {
+      await recordAudit(tx, {
+        entityType: 'Permit',
+        entityId: permit.id,
+        action: 'STATUS_CHANGE',
+        summary: `Status changed from ${permit.status} to ${body.status}.`,
+      });
+    }
+    return result;
   });
 
   return NextResponse.json({ id: updated.id });

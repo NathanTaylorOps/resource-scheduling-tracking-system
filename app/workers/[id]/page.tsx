@@ -6,15 +6,36 @@ import { evaluateSubcontractorCompliance } from '@/lib/domain/subcontractors';
 import { calculateUtilization } from '@/lib/domain/scheduling';
 import { StatusBadge, certificationBadge } from '@/components/StatusBadge';
 import { AddCertificationForm } from '@/components/AddCertificationForm';
+import { AddScreeningForm } from '@/components/AddScreeningForm';
+import { getViewingActor } from '@/lib/actor';
+import { permissionsFor } from '@/lib/role';
 
 export const dynamic = 'force-dynamic';
 
+const SCREENING_TYPE_LABEL: Record<string, string> = {
+  DRUG_TEST: 'Drug test',
+  BACKGROUND_CHECK: 'Background check',
+};
+
+// PASS/FAIL/PENDING mapped onto the shared StatusBadge vocabulary — a
+// pending result reads as a heads-up (warning), not a block, since a
+// screening still in progress isn't the same fact as one that came back
+// failed.
+const SCREENING_RESULT_BADGE: Record<string, { status: 'ok' | 'blocked' | 'warning'; label: string }> = {
+  PASS: { status: 'ok', label: 'Pass' },
+  FAIL: { status: 'blocked', label: 'Fail' },
+  PENDING: { status: 'warning', label: 'Pending' },
+};
+
 export default async function WorkerDetailPage({ params }: { params: { id: string } }) {
   const prisma = getDb();
+  const actor = getViewingActor();
+  const perms = permissionsFor(actor.role);
   const worker = await prisma.worker.findUnique({
     where: { id: params.id },
     include: {
       certifications: { orderBy: { expiryDate: 'asc' } },
+      screenings: { orderBy: { administeredDate: 'desc' } },
       assignments: { include: { job: true }, orderBy: { start: 'desc' } },
       subcontractor: { include: { coiRecords: { orderBy: { expiryDate: 'asc' } } } },
     },
@@ -100,6 +121,34 @@ export default async function WorkerDetailPage({ params }: { params: { id: strin
           {worker.certifications.length === 0 && <p className="py-2 text-sm text-zinc-500">No certifications on file.</p>}
         </ul>
         <AddCertificationForm workerId={worker.id} />
+      </div>
+
+      <div className="card">
+        <h2 className="mb-3 font-semibold">Background &amp; drug screening</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          Point-in-time drug test and background check results — append-only, since a new test is a new record,
+          not an edit to a prior one.
+        </p>
+        <ul className="divide-y divide-outdoor-border">
+          {worker.screenings.map((screening) => {
+            const badge = SCREENING_RESULT_BADGE[screening.result] ?? { status: 'warning' as const, label: screening.result };
+            return (
+              <li key={screening.id} className="flex items-center justify-between py-2">
+                <div>
+                  <div className="font-medium">{SCREENING_TYPE_LABEL[screening.screeningType] ?? screening.screeningType}</div>
+                  <div className="text-xs text-zinc-500">
+                    Administered {screening.administeredDate.toLocaleDateString()}
+                    {screening.expiryDate && <> · expires {screening.expiryDate.toLocaleDateString()}</>}
+                    {screening.notes && <> · {screening.notes}</>}
+                  </div>
+                </div>
+                <StatusBadge status={badge.status} label={badge.label} />
+              </li>
+            );
+          })}
+          {worker.screenings.length === 0 && <p className="py-2 text-sm text-zinc-500">No screenings on file.</p>}
+        </ul>
+        {perms.canEditCompliance && <AddScreeningForm workerId={worker.id} />}
       </div>
 
       {worker.subcontractor && subcontractorCompliance && (

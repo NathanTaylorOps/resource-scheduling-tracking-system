@@ -25,6 +25,10 @@ import {
   ReinspectionChannel,
   RenewalPattern,
   CoverageType,
+  LienWaiverType,
+  LienWaiverStatus,
+  IncidentType,
+  IncidentSeverity,
 } from '../lib/enums';
 
 const prisma = new PrismaClient();
@@ -37,6 +41,10 @@ const daysAgo = (n: number) => new Date(today.getTime() - n * DAY);
 async function main() {
   console.log('Seeding Coastwood Builders demo data...');
 
+  await prisma.certifiedPayrollEntry.deleteMany();
+  await prisma.jobHazardAnalysis.deleteMany();
+  await prisma.safetyIncident.deleteMany();
+  await prisma.lienWaiver.deleteMany();
   await prisma.scanPhoto.deleteMany();
   await prisma.scanEvent.deleteMany();
   await prisma.workOrder.deleteMany();
@@ -74,6 +82,7 @@ async function main() {
         startDate: daysAgo(45),
         targetEndDate: daysFromNow(120),
         weatherSensitivity: WeatherSensitivity.SENSITIVE,
+        division: 'Residential — North Sound',
       },
     }),
     prisma.job.create({
@@ -86,6 +95,7 @@ async function main() {
         startDate: daysAgo(20),
         targetEndDate: daysFromNow(60),
         weatherSensitivity: WeatherSensitivity.CONDITIONAL,
+        division: 'Residential — North Sound',
       },
     }),
     prisma.job.create({
@@ -98,6 +108,7 @@ async function main() {
         startDate: daysFromNow(14),
         targetEndDate: daysFromNow(280),
         weatherSensitivity: WeatherSensitivity.SENSITIVE,
+        division: 'Residential — Eastside',
       },
     }),
     prisma.job.create({
@@ -110,8 +121,15 @@ async function main() {
         startDate: daysAgo(90),
         targetEndDate: daysFromNow(30),
         weatherSensitivity: WeatherSensitivity.CONDITIONAL,
+        division: 'Residential — Eastside',
       },
     }),
+    // Light-commercial tenant improvement, and the one seeded job bound to
+    // Davis-Bacon-style certified payroll reporting — see
+    // Job.certifiedPayrollRequired's schema comment for why that's a
+    // contract fact, not something inferred from job type generally; it
+    // just happens that public-money commercial work is where it shows up
+    // in this seed set, not residential.
     prisma.job.create({
       data: {
         name: 'Lakeview Professional Building — Tenant Improvement',
@@ -122,6 +140,8 @@ async function main() {
         startDate: daysAgo(10),
         targetEndDate: daysFromNow(75),
         weatherSensitivity: WeatherSensitivity.INSENSITIVE,
+        division: 'Commercial — Eastside',
+        certifiedPayrollRequired: true,
       },
     }),
   ]);
@@ -1146,6 +1166,136 @@ async function main() {
     },
   });
 
+  // ---------------------------------------------------------------------
+  // Lien waivers — one pending, one received, one disputed, spanning both
+  // subcontractor firms already on file above.
+  // ---------------------------------------------------------------------
+  await prisma.lienWaiver.createMany({
+    data: [
+      {
+        jobId: cedarHollow.id,
+        subcontractorId: salvadorElectric.id,
+        waiverType: LienWaiverType.CONDITIONAL_PROGRESS,
+        payPeriodStart: daysAgo(30),
+        payPeriodEnd: daysAgo(16),
+        amount: 18400,
+        status: LienWaiverStatus.PENDING,
+      },
+      {
+        jobId: cedarHollow.id,
+        subcontractorId: choPlumbing.id,
+        waiverType: LienWaiverType.UNCONDITIONAL_PROGRESS,
+        payPeriodStart: daysAgo(60),
+        payPeriodEnd: daysAgo(46),
+        amount: 9750,
+        status: LienWaiverStatus.RECEIVED,
+        receivedDate: daysAgo(40),
+      },
+      // Deliberately disputed — the amount on the waiver didn't match what
+      // Cho Plumbing invoiced for the period, which is exactly the kind of
+      // mismatch this status exists to flag before a payment goes out.
+      {
+        jobId: mapleCrossing.id,
+        subcontractorId: choPlumbing.id,
+        waiverType: LienWaiverType.CONDITIONAL_FINAL,
+        payPeriodStart: daysAgo(20),
+        payPeriodEnd: daysAgo(6),
+        amount: 4200,
+        status: LienWaiverStatus.DISPUTED,
+        notes: 'Amount does not match Cho Plumbing\'s invoice for the period — following up before payment.',
+      },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
+  // Safety incidents — a near miss (open) and a closed low-severity
+  // property-damage incident, the ordinary shape a small-mid GC actually
+  // logs day to day rather than anything catastrophic.
+  // ---------------------------------------------------------------------
+  await prisma.safetyIncident.createMany({
+    data: [
+      {
+        jobId: cedarHollow.id,
+        incidentType: IncidentType.NEAR_MISS,
+        severity: IncidentSeverity.MEDIUM,
+        occurredAt: daysAgo(4),
+        description: 'Scaffold plank shifted underfoot while framing the north gable — worker caught themselves on the guardrail, no fall occurred.',
+        reportedByWorkerId: marcus.id,
+        involvedWorkerId: priya.id,
+        status: 'OPEN',
+      },
+      {
+        jobId: mapleCrossing.id,
+        incidentType: IncidentType.PROPERTY_DAMAGE,
+        severity: IncidentSeverity.LOW,
+        occurredAt: daysAgo(9),
+        description: 'Skid steer clipped a landscape timber while backfilling, cracking it.',
+        correctionAction: 'Timber replaced same day; operator briefed on the tightened clearance around the bed edge.',
+        reportedByWorkerId: bigSam.id,
+        status: 'CLOSED',
+      },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
+  // Job hazard analyses — one per active job with a task worth a written
+  // JHA rather than just a toolbox talk.
+  // ---------------------------------------------------------------------
+  await prisma.jobHazardAnalysis.createMany({
+    data: [
+      {
+        jobId: cedarHollow.id,
+        taskDescription: 'Second-floor exterior wall framing and sheathing',
+        hazardsIdentified: 'Fall from elevated work surface; struck-by from material staged on the deck edge.',
+        controlMeasures: 'Guardrails at all open edges; harness and tie-off above 6 ft; materials staged at least 6 ft back from the edge.',
+        reviewDate: daysAgo(45),
+        preparedByWorkerId: dale.id,
+      },
+      {
+        jobId: mapleCrossing.id,
+        taskDescription: 'Trench excavation for perimeter drain',
+        hazardsIdentified: 'Trench wall collapse; struck-by from the excavator swing radius.',
+        controlMeasures: 'Sloped/benched per soil type below 5 ft; spoil pile kept 2 ft back from the edge; ground guide posted whenever the excavator is swinging near the trench.',
+        reviewDate: daysAgo(22),
+        preparedByWorkerId: kenji.id,
+      },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
+  // Certified payroll — Lakeview is the one seeded job with
+  // certifiedPayrollRequired set (see Job.certifiedPayrollRequired's
+  // schema comment). One draft, one already submitted.
+  // ---------------------------------------------------------------------
+  await prisma.certifiedPayrollEntry.createMany({
+    data: [
+      {
+        jobId: lakeview.id,
+        workerId: kenji.id,
+        weekEnding: daysAgo(7),
+        classification: 'Project Manager',
+        hoursWorked: 40,
+        hourlyRate: 62,
+        fringeRate: 14.5,
+        status: 'SUBMITTED',
+      },
+      {
+        // Same worker as above, a more recent week — kenji is the only
+        // worker actually assigned to Lakeview in this seed set (see the
+        // assignments block above), so this stays consistent with who's
+        // really on the job rather than pulling in a name from elsewhere.
+        jobId: lakeview.id,
+        workerId: kenji.id,
+        weekEnding: daysAgo(0),
+        classification: 'Project Manager',
+        hoursWorked: 36,
+        hourlyRate: 62,
+        fringeRate: 14.5,
+        status: 'DRAFT',
+      },
+    ],
+  });
+
   const equipmentCount = await prisma.equipment.count();
   const subcontractorCount = await prisma.subcontractor.count();
   const roleRequirementCount = await prisma.jobRoleRequirement.count();
@@ -1154,11 +1304,16 @@ async function main() {
   const inspectionCount = await prisma.inspection.count();
   const dailyLogCount = await prisma.dailyLog.count();
   const safetyMeetingCount = await prisma.safetyMeeting.count();
+  const lienWaiverCount = await prisma.lienWaiver.count();
+  const safetyIncidentCount = await prisma.safetyIncident.count();
+  const hazardAnalysisCount = await prisma.jobHazardAnalysis.count();
+  const payrollEntryCount = await prisma.certifiedPayrollEntry.count();
   console.log(
     `Seeded ${jobs.length} jobs, ${workers.length} workers, ${subcontractorCount} subcontractor firms, ` +
       `${equipmentCount} equipment items, ${roleRequirementCount} role requirements, ` +
       `${reservationCount} equipment reservations, ${permitCount} permits (${inspectionCount} inspections), ` +
-      `${dailyLogCount} daily logs, ${safetyMeetingCount} toolbox talks.`,
+      `${dailyLogCount} daily logs, ${safetyMeetingCount} toolbox talks, ${lienWaiverCount} lien waivers, ` +
+      `${safetyIncidentCount} safety incidents, ${hazardAnalysisCount} JHAs, ${payrollEntryCount} certified payroll entries.`,
   );
 }
 

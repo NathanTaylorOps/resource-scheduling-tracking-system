@@ -4,11 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import { RoleSwitcher } from '@/components/RoleSwitcher';
 
 const LINKS = [
   { href: '/', label: 'Dashboard' },
   { href: '/field', label: 'Field' },
   { href: '/jobs', label: 'Jobs' },
+  { href: '/portfolio', label: 'Portfolio' },
   { href: '/workers', label: 'Crew' },
   { href: '/subcontractors', label: 'Subcontractors' },
   { href: '/equipment', label: 'Equipment' },
@@ -48,6 +50,10 @@ export function Nav() {
           ))}
         </nav>
 
+        <div className="hidden items-center md:flex">
+          <RoleSwitcher />
+        </div>
+
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -62,6 +68,9 @@ export function Nav() {
 
       {open && (
         <nav id="mobile-nav" className="border-t border-outdoor-border px-4 py-2 md:hidden">
+          <div className="mb-2">
+            <RoleSwitcher />
+          </div>
           <div className="flex flex-col gap-1">
             {LINKS.map((link) => (
               <Link
