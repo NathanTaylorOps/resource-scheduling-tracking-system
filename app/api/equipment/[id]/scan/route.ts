@@ -17,6 +17,31 @@ interface ScanRequestBody {
 
 const VALID_ACTIONS = new Set<string>(Object.values(ScanAction));
 
+// A generous ceiling for a phone-camera photo re-encoded as a data URL
+// (roughly 6.5MB of actual image bytes once the ~33% base64 overhead is
+// backed out) — enough for a real defect photo, not so much that one
+// visitor's session database can be bloated by an unbounded upload. There
+// is no separate file-storage layer here (see lib/db.ts's per-visitor
+// SQLite design), so this string lands directly in that visitor's own
+// database file; the cap protects disk usage on the host, not other
+// visitors' data, which per-visitor isolation already keeps separate.
+const MAX_PHOTO_DATA_URL_LENGTH = 9_000_000;
+
+const ALLOWED_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const PHOTO_DATA_URL_PATTERN = new RegExp(
+  `^data:(${ALLOWED_PHOTO_MIME_TYPES.map((t) => t.replace('/', '\\/')).join('|')});base64,[A-Za-z0-9+/]+=*$`,
+);
+
+function validatePhotoDataUrl(value: string): string | null {
+  if (value.length > MAX_PHOTO_DATA_URL_LENGTH) {
+    return 'That photo is too large — try a lower-resolution photo.';
+  }
+  if (!PHOTO_DATA_URL_PATTERN.test(value)) {
+    return 'That file does not look like a supported photo (JPEG, PNG, WebP, or HEIC).';
+  }
+  return null;
+}
+
 /**
  * Records one entry in an asset's chain-of-custody trail and applies the
  * resulting change to Equipment.currentJobId / currentWorkerId / status —
@@ -62,6 +87,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
   if (body.action === ScanAction.DEFECT_REPORTED && !body.conditionNote?.trim()) {
     return NextResponse.json({ error: 'Describe the defect before reporting it.' }, { status: 400 });
+  }
+  if (body.photoDataUrl) {
+    const photoError = validatePhotoDataUrl(body.photoDataUrl);
+    if (photoError) {
+      return NextResponse.json({ error: photoError }, { status: 400 });
+    }
   }
 
   try {

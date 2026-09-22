@@ -218,8 +218,14 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   ).length > 0;
 
   const crew = crewStatusFrom({ hasOverlapConflict, hasUnfilledRole });
+  const crewReason = hasOverlapConflict
+    ? 'A crew member is double-booked against another job.'
+    : hasUnfilledRole
+      ? 'A required role on the staffing plan has nobody assigned.'
+      : undefined;
 
   const hasAssetDownForService = equipment.some((e) => e.status === 'DOWN_FOR_SERVICE');
+  const assetsDownForService = equipment.filter((e) => e.status === 'DOWN_FOR_SERVICE');
 
   const equipmentConflicts = findEquipmentConflicts(
     allReservationsForThoseAssets.map((r) => ({ id: r.id, equipmentId: r.equipmentId, jobId: r.jobId, start: r.start, end: r.end })),
@@ -235,16 +241,28 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   const hasAssetConflict = hasReservationOverlapConflict || reservedButDownForService.length > 0;
 
   const equipmentComponent = equipmentStatusFrom({ hasAssetDownForService, hasAssetConflict });
+  const equipmentReason = hasAssetDownForService
+    ? `${assetsDownForService[0]!.name}${assetsDownForService.length > 1 ? ` and ${assetsDownForService.length - 1} other asset(s)` : ''} on site is down for service.`
+    : hasAssetConflict
+      ? 'A reserved asset is double-booked or down for service before it arrives.'
+      : undefined;
 
   // --- Compliance: worker certifications, subcontractor entity-level
   // compliance (COI + license), and equipment compliance items ---
   let hasExpiredItem = false;
   let hasExpiringSoonItem = false;
+  // First concrete offender found, for the reason string below — not an
+  // exhaustive list, just enough for a dashboard reader to know where to
+  // start looking without clicking into the job.
+  let firstExpiredReason: string | undefined;
 
   for (const assignment of job.assignments) {
     for (const cert of assignment.worker.certifications) {
       const status = getCertificationStatus(cert.expiryDate, now, undefined, cert.renewalPattern, cert.renewalFiledDate);
-      if (status.status === 'expired') hasExpiredItem = true;
+      if (status.status === 'expired') {
+        hasExpiredItem = true;
+        firstExpiredReason ??= `${assignment.worker.name}'s ${cert.certType} certification has expired.`;
+      }
       if (status.status === 'expiring_soon' || status.status === 'aging' || status.status === 'renewal_pending') {
         hasExpiringSoonItem = true;
       }
@@ -256,7 +274,10 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
         { licenseExpiryDate: subcontractor.licenseExpiryDate, coiRecords: subcontractor.coiRecords },
         now,
       );
-      if (subStatus.hasExpiredItem) hasExpiredItem = true;
+      if (subStatus.hasExpiredItem) {
+        hasExpiredItem = true;
+        firstExpiredReason ??= `${subcontractor.businessName}'s insurance or license on file has expired.`;
+      }
       if (subStatus.hasExpiringSoonItem) hasExpiringSoonItem = true;
     }
   }
@@ -277,7 +298,10 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
         currentValue,
         resolveDueSoonWindow(c.counterType),
       );
-      if (status.status === 'overdue') hasExpiredItem = true;
+      if (status.status === 'overdue') {
+        hasExpiredItem = true;
+        firstExpiredReason ??= `${item.name}'s ${c.complianceType.toLowerCase()} is overdue.`;
+      }
       if (status.status === 'due_soon' || status.status === 'in_tolerance') hasExpiringSoonItem = true;
     }
 
@@ -306,12 +330,20 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
         currentValue,
         resolveDueSoonWindow(plan.counterType),
       );
-      if (status.status === 'overdue') hasExpiredItem = true;
+      if (status.status === 'overdue') {
+        hasExpiredItem = true;
+        firstExpiredReason ??= `${item.name} is overdue for scheduled maintenance.`;
+      }
       if (status.status === 'due_soon' || status.status === 'in_tolerance') hasExpiringSoonItem = true;
     }
   }
 
   const compliance = complianceStatusFrom({ hasExpiredItem, hasExpiringSoonItem });
+  const complianceReason = hasExpiredItem
+    ? firstExpiredReason
+    : hasExpiringSoonItem
+      ? 'A certification, subcontractor compliance item, or equipment compliance item needs review soon.'
+      : undefined;
 
   // --- Weather: live forecast cache against the job's sensitivity tag ---
   // A job that doesn't care about weather at all reads as 'ok' regardless
@@ -343,15 +375,22 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
       hasModerateRiskInForecastWindow: check.atRisk && job.weatherSensitivity === 'CONDITIONAL',
     });
   }
+  const weatherReason =
+    weather === 'unknown'
+      ? "No forecast cached for this job yet — open it, or wait for the next session refresh, to check it."
+      : weather !== 'ok'
+        ? 'The forecast shows weather risk for this job in the coming days.'
+        : undefined;
 
   // --- Permits: any failed inspection or expired permit on this job? ---
   // Calendar-date comparison (see lib/domain/dates.ts), not exact
   // milliseconds — a permit good "through" its expiryDate shouldn't read as
   // expired hours before that date is actually over in the timezone anyone
   // reading the printed date is standing in.
-  const hasExpiredPermit = permits.some(
+  const expiredPermits = permits.filter(
     (p) => p.status === 'EXPIRED' || (p.expiryDate !== null && isPastCalendarDate(p.expiryDate, now)),
   );
+  const hasExpiredPermit = expiredPermits.length > 0;
   const allInspections = permits.flatMap((p) => p.inspections);
   const hasFailedInspection = allInspections.some((i) => i.status === 'FAILED');
   const hasInspectionDueSoon = allInspections.some(
@@ -362,6 +401,28 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
       i.scheduledDate.getTime() - now.getTime() <= DUE_SOON_WINDOW_DAYS * DAY_MS,
   );
   const permitsComponent = permitsStatusFrom({ hasFailedInspection, hasExpiredPermit, hasInspectionDueSoon });
+  const failedInspectionPermit = permits.find((p) => p.inspections.some((i) => i.status === 'FAILED'));
+  const permitsReason = hasFailedInspection
+    ? // failedInspectionPermit is guaranteed non-null here: hasFailedInspection
+      // is derived from allInspections, which is itself flatMap'd from this
+      // same permits array, so a FAILED inspection can only exist on a
+      // permit this find() will locate.
+      `The ${failedInspectionPermit!.permitType.toLowerCase()} permit has a failed inspection.`
+    : hasExpiredPermit
+      ? `The ${expiredPermits[0]!.permitType.toLowerCase()} permit has expired.`
+      : hasInspectionDueSoon
+        ? 'An inspection is coming up in the next two weeks.'
+        : undefined;
 
-  return computeReadiness({ crew, equipment: equipmentComponent, compliance, weather, permits: permitsComponent });
+  const result = computeReadiness({ crew, equipment: equipmentComponent, compliance, weather, permits: permitsComponent });
+  return {
+    ...result,
+    reasons: {
+      crew: crewReason,
+      equipment: equipmentReason,
+      compliance: complianceReason,
+      weather: weatherReason,
+      permits: permitsReason,
+    },
+  };
 }

@@ -12,6 +12,7 @@ const LINKS = [
   { href: '/workers', label: 'Crew' },
   { href: '/subcontractors', label: 'Subcontractors' },
   { href: '/equipment', label: 'Equipment' },
+  { href: '/expiring', label: 'Expiring' },
   { href: '/schedule', label: 'Schedule' },
   { href: '/map', label: 'Map' },
 ];

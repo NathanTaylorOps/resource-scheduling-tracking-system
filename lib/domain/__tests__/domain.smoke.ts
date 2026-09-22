@@ -276,6 +276,25 @@ console.log('\ncertifications.ts — expiry status and assignment gating');
   const graceNeverFiled = getCertificationStatus(new Date('2026-09-01'), now, undefined, 'GRACE_PERIOD');
   assertEqual('GRACE_PERIOD with no renewal on file at all is a plain expired', graceNeverFiled.status, 'expired');
 
+  // Regression: the filing-deadline check used to compare raw elapsed
+  // milliseconds, which could misjudge a renewal filed right at the
+  // 90-calendar-day boundary depending on the time of day it was recorded
+  // at. A renewal filed at 11pm, exactly 90 calendar days before a
+  // date-only expiryDate, is "filed 90 days out" in every ordinary sense
+  // and must read as on-time regardless of that time-of-day component.
+  const graceFiledExactlyOnBoundaryLateInDay = getCertificationStatus(
+    new Date('2026-09-01'),
+    now,
+    undefined,
+    'GRACE_PERIOD',
+    new Date('2026-06-03T23:30:00Z'), // exactly 90 calendar days before 2026-09-01, late in the day
+  );
+  assertEqual(
+    'GRACE_PERIOD filed exactly on the 90-day calendar boundary is on time regardless of time-of-day',
+    graceFiledExactlyOnBoundaryLateInDay.status,
+    'renewal_pending',
+  );
+
   const agingEligibility = canAssignWorker(
     ['osha_10'],
     [{ certType: 'osha_10', expiryDate: new Date('2026-09-01'), renewalPattern: 'INFORMAL_RECENCY' }],

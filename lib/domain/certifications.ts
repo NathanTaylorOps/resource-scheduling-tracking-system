@@ -24,7 +24,7 @@
  *     binary.
  */
 
-import { calendarDaysUntil } from './dates';
+import { calendarDaysUntil, calendarDaysBetween } from './dates';
 
 export type CertificationStatus = 'valid' | 'expiring_soon' | 'expired' | 'aging' | 'renewal_pending';
 
@@ -93,8 +93,15 @@ export function getCertificationStatus(
     }
 
     if (renewalPattern === 'GRACE_PERIOD') {
-      const filingDeadline = expiryDate.getTime() - GRACE_FILING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-      const filedOnTime = renewalFiledDate != null && renewalFiledDate.getTime() <= filingDeadline;
+      // Calendar-day comparison, not raw millisecond subtraction — same
+      // reasoning as calendarDaysUntil above. A renewal filed at UTC 11pm,
+      // 90 calendar days before a date-only expiryDate, is filed "90 days
+      // out" in every ordinary sense; comparing exact elapsed milliseconds
+      // could misjudge that by most of a day depending on the time of day
+      // renewalFiledDate happened to be recorded at, right at the boundary
+      // that decides expired vs. renewal_pending.
+      const filedOnTime =
+        renewalFiledDate != null && calendarDaysBetween(renewalFiledDate, expiryDate) >= GRACE_FILING_WINDOW_DAYS;
       if (filedOnTime) {
         return { status: 'renewal_pending', daysUntilExpiry, crossedThreshold: 0 };
       }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
 import { canAssignWorker, parseCertTypesList } from '@/lib/domain/certifications';
 
@@ -7,6 +8,10 @@ interface CreateAssignmentBody {
   roleOnJob: string;
   start: string;
   end: string;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 /**
@@ -86,9 +91,22 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
   }
 
-  const assignment = await prisma.assignment.create({
-    data: { workerId: worker.id, jobId: job.id, roleOnJob, start, end },
-  });
-
-  return NextResponse.json({ id: assignment.id }, { status: 201 });
+  // No findFirst pre-check — @@unique([workerId, jobId, roleOnJob, start,
+  // end]) on Assignment only rejects an EXACT duplicate (a double-click, a
+  // retried submit), never an overlapping-but-different assignment, which
+  // stays intentionally allowed (see this function's own doc comment).
+  try {
+    const assignment = await prisma.assignment.create({
+      data: { workerId: worker.id, jobId: job.id, roleOnJob, start, end },
+    });
+    return NextResponse.json({ id: assignment.id }, { status: 201 });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        { error: `${worker.name} is already assigned to this exact role and date range on this job.` },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
 }

@@ -149,6 +149,13 @@ model Assignment {
 
   @@index([workerId])
   @@index([jobId])
+  // Guards against an exact double-submit (a double-click, a retried
+  // fetch) creating two identical rows — not against an overlapping-but-
+  // different assignment, which stays intentionally allowed (see this
+  // route's own comment in app/api/jobs/[id]/assignments/route.ts: a real
+  // double-booking is meant to surface as a visible conflict, not be
+  // write-time blocked).
+  @@unique([workerId, jobId, roleOnJob, start, end])
 }
 
 // renewalPattern names which of four real-world renewal shapes this
@@ -254,6 +261,15 @@ model Equipment {
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  // currentJobId is read on every job-detail render (`where: { currentJobId
+  // }`, app/jobs/[id]/page.tsx) — the one relation this central to the UI
+  // that was missing the index pattern applied everywhere else in this
+  // schema. status is read almost as often (the equipment list's own
+  // status column, plus every "down for service" readiness check).
+  @@index([currentJobId])
+  @@index([currentWorkerId])
+  @@index([status])
 }
 
 // An asset can be tracked on more than one counter at once — a compressor
@@ -406,6 +422,9 @@ model EquipmentReservation {
 
   @@index([equipmentId])
   @@index([jobId])
+  // Same exact-duplicate guard as Assignment above, for the same reason —
+  // an overlapping-but-different reservation stays intentionally allowed.
+  @@unique([equipmentId, jobId, start, end])
 }
 
 // ---------------------------------------------------------------------------

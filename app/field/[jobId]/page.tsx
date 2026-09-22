@@ -32,14 +32,19 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
   // filtering every log — DailyLog is one-per-job-per-day, so this either
   // finds today's entry or confirms there isn't one yet.
   const todaysLogDate = new Date(now.toISOString().slice(0, 10));
-  const [readiness, equipment, permits, todaysLog] = await Promise.all([
+  const [readiness, equipment, permits, todaysLog, allWorkers] = await Promise.all([
     computeJobReadiness(job.id),
     prisma.equipment.findMany({ where: { currentJobId: job.id } }),
     prisma.permit.findMany({ where: { jobId: job.id }, include: { inspections: true } }),
     prisma.dailyLog.findUnique({ where: { jobId_logDate: { jobId: job.id, logDate: todaysLogDate } } }),
+    prisma.worker.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
 
   const crew = [...new Map(job.assignments.map((a) => [a.worker.id, { id: a.worker.id, name: a.worker.name }])).values()];
+  const crewIds = new Set(crew.map((w) => w.id));
+  // A visiting PM, GM, or superintendent covering the log isn't necessarily
+  // staffed on this job — see DailyLogForm's own comment on otherWorkers.
+  const otherWorkers = allWorkers.filter((w) => !crewIds.has(w.id));
 
   return (
     <div className="mx-auto max-w-lg space-y-5">
@@ -153,6 +158,7 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
         <DailyLogForm
           jobId={job.id}
           crew={crew}
+          otherWorkers={otherWorkers}
           existingLog={
             todaysLog && {
               id: todaysLog.id,

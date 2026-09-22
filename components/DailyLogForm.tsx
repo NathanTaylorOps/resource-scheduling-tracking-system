@@ -17,13 +17,24 @@ interface ExistingDailyLog {
 interface DailyLogFormProps {
   jobId: string;
   crew: Array<{ id: string; name: string }>;
+  /**
+   * The rest of the company's crew, not assigned to this job — a visiting
+   * PM, GM, or superintendent covering the log for a job they aren't
+   * personally staffed on isn't in `crew`, and without this the "Logged
+   * by" dropdown had no way to name them at all. Optional and defaults to
+   * empty so existing callers that only ever pass `crew` keep compiling;
+   * still a real Worker record either way (submittedBy is a foreign key —
+   * see the daily-logs route), not free text, so whoever's named here has
+   * to actually be in the system.
+   */
+  otherWorkers?: Array<{ id: string; name: string }>;
   /** When set, this job already has a log for today — the form opens pre-filled and PATCHes that record instead of creating a new one, since DailyLog's one-per-job-per-day constraint means a second POST for today would just 409. */
   existingLog?: ExistingDailyLog | null;
   /** Called after a successful submit — the foreman view uses this to collapse back to a confirmation instead of a full page refresh. */
   onSubmitted?: () => void;
 }
 
-export function DailyLogForm({ jobId, crew, existingLog, onSubmitted }: DailyLogFormProps) {
+export function DailyLogForm({ jobId, crew, otherWorkers = [], existingLog, onSubmitted }: DailyLogFormProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [logDate, setLogDate] = useState(existingLog ? existingLog.logDate.slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -160,9 +171,18 @@ export function DailyLogForm({ jobId, crew, existingLog, onSubmitted }: DailyLog
         Logged by
         <select value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} className="mt-1 w-full rounded-md border border-outdoor-border px-2.5 py-1.5 text-sm">
           <option value="">Select crew member…</option>
-          {crew.map((w) => (
-            <option key={w.id} value={w.id}>{w.name}</option>
-          ))}
+          <optgroup label="This job's crew">
+            {crew.map((w) => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </optgroup>
+          {otherWorkers.length > 0 && (
+            <optgroup label="Other crew (not assigned to this job)">
+              {otherWorkers.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </label>
       <div className="flex gap-2 pt-1">

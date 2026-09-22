@@ -15,6 +15,20 @@ const STATUS_LABEL: Record<string, string> = {
   RETIRED: 'Retired',
 };
 
+// Prefixed rather than a bare "Overdue"/"Due soon"/"Current" — sitting
+// right next to the operational Status column (which can itself read "Down
+// for service"), an unprefixed compliance badge reads as ambiguous: is
+// "Overdue" about the repair, or about calibration/inspection standing?
+// Compliance here always means the fixed-interval calibration, inspection,
+// warranty, and preventive-maintenance items tracked in
+// EquipmentCompliance/MaintenancePlan — never the operational status next
+// to it.
+const COMPLIANCE_LABEL: Record<'ok' | 'warning' | 'blocked', string> = {
+  ok: 'Compliance current',
+  warning: 'Compliance due soon',
+  blocked: 'Compliance overdue',
+};
+
 export default async function EquipmentPage() {
   const prisma = getDb();
   const equipment = await prisma.equipment.findMany({
@@ -66,7 +80,7 @@ export default async function EquipmentPage() {
                 <div className="font-semibold">{item.name}</div>
                 <div className="text-xs text-zinc-500">{item.qrCode}</div>
               </div>
-              <StatusBadge status={worst} label={worst === 'ok' ? 'Current' : worst === 'warning' ? 'Due soon' : 'Overdue'} />
+              <StatusBadge status={worst} label={COMPLIANCE_LABEL[worst]} />
             </div>
             <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
               <div>
@@ -117,7 +131,7 @@ export default async function EquipmentPage() {
                 </td>
                 <td className="px-4 py-3">{location}</td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={worst} label={worst === 'ok' ? 'Current' : worst === 'warning' ? 'Due soon' : 'Overdue'} />
+                  <StatusBadge status={worst} label={COMPLIANCE_LABEL[worst]} />
                 </td>
               </tr>
             ))}

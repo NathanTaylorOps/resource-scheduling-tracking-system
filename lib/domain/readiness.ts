@@ -30,6 +30,17 @@ export interface ReadinessInputs {
 
 export interface ReadinessResult extends ReadinessInputs {
   overall: ComponentStatus;
+  /**
+   * A short, human-readable reason for each non-'ok' component, keyed by
+   * component name — e.g. { compliance: "Subcontractor compliance lapsed:
+   * Cho Plumbing & Mechanical Inc." }. Optional and populated by the
+   * caller (lib/readiness-service.ts has the raw facts each status was
+   * derived from; this pure function only ever sees the already-reduced
+   * ComponentStatus values, so it can't build these itself). Lets a
+   * summary screen like the dashboard show *why* a job is blocked without
+   * requiring a click into the job's own detail page to find out.
+   */
+  reasons?: Partial<Record<keyof ReadinessInputs, string>>;
 }
 
 const SEVERITY: Record<ComponentStatus, number> = { ok: 0, unknown: 1, warning: 1, blocked: 2 };

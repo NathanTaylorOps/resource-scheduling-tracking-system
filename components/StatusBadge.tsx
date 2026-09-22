@@ -50,11 +50,24 @@ const ICONS: Record<ComponentStatus, typeof CircleCheck> = {
  * maintenance state is shown — never a bespoke color or icon chosen per
  * screen.
  */
-export function StatusBadge({ status, label }: { status: ComponentStatus; label?: string }) {
+export function StatusBadge({
+  status,
+  label,
+  title,
+}: {
+  status: ComponentStatus;
+  label?: string;
+  /** Optional hover text — for a label whose exact meaning isn't
+   * self-evident (e.g. "Review needed" covering three different underlying
+   * reasons), this is where to spell out what it actually means without
+   * cluttering the badge itself. */
+  title?: string;
+}) {
   const Icon = ICONS[status];
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${CLASSES[status]}`}
+      title={title}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {label ?? LABELS[status]}

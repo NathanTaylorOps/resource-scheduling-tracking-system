@@ -152,6 +152,11 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   // their worker pickers from — whoever's actually assigned to this job,
   // deduplicated the same way workerNameById above already does.
   const crewOnJob = [...new Map(job.assignments.map((a) => [a.worker.id, { id: a.worker.id, name: a.worker.name }])).values()];
+  // A visiting PM, GM, or superintendent covering the daily log isn't
+  // necessarily staffed on this job — see DailyLogForm's own comment on
+  // otherWorkers.
+  const crewOnJobIds = new Set(crewOnJob.map((w) => w.id));
+  const otherWorkers = allWorkers.filter((w) => !crewOnJobIds.has(w.id));
 
   return (
     <div className="space-y-6">
@@ -399,6 +404,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <DailyLogForm
             jobId={job.id}
             crew={crewOnJob}
+            otherWorkers={otherWorkers}
             existingLog={
               todaysLog && {
                 id: todaysLog.id,

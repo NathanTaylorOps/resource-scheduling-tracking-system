@@ -29,3 +29,17 @@ export function calendarDaysUntil(target: Date, now: Date): number {
 export function isPastCalendarDate(target: Date, now: Date): boolean {
   return calendarDaysUntil(target, now) < 0;
 }
+
+/**
+ * Whole calendar days from `from` to `to`, by UTC calendar date — the same
+ * comparison calendarDaysUntil makes against "now," generalized to two
+ * arbitrary dates. Use this instead of `to.getTime() - from.getTime()`
+ * wherever the result decides a day-granularity threshold (a filing
+ * deadline, a grace window): raw millisecond subtraction between two
+ * date-only values is only safe when both happen to carry the same
+ * time-of-day, which a value entered by a form or parsed from a
+ * "YYYY-MM-DD" string isn't guaranteed to.
+ */
+export function calendarDaysBetween(from: Date, to: Date): number {
+  return calendarDaysUntil(to, from);
+}

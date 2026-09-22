@@ -17,6 +17,7 @@ const INSPECTION_TYPES = [
   'FINAL',
 ];
 const INSPECTION_STATUSES = ['NOT_SCHEDULED', 'SCHEDULED', 'PASSED', 'FAILED'];
+const PERMIT_STATUSES = ['APPLIED', 'ISSUED', 'FINALED', 'EXPIRED'];
 const REINSPECTION_CHANNELS = ['IN_PERSON', 'PHONE', 'ONLINE_PORTAL', 'REMOTE_VIDEO'];
 
 function titleCase(value: string): string {
@@ -158,8 +159,108 @@ function AddPermitForm({ jobId, onDone, onCancel }: { jobId: string; onDone: () 
   );
 }
 
+/**
+ * Advances a permit past its initial filing — mark it issued, record its
+ * permit number once known, set or update its expiry, or file a renewal.
+ * A renewal is deliberately just a new expiryDate (and, if the
+ * jurisdiction re-issues it, a new issuedDate) on the SAME permit row
+ * rather than a new Permit record: it's the same permit continuing, not a
+ * new one, and this keeps its inspection history attached to the one row
+ * a PM actually cares about tracking.
+ */
+function EditPermitForm({ permit: p, onDone, onCancel }: { permit: PermitData; onDone: () => void; onCancel: () => void }) {
+  const [status, setStatus] = useState(p.status);
+  const [permitNumber, setPermitNumber] = useState(p.permitNumber ?? '');
+  const [issuedDate, setIssuedDate] = useState(toDateInputValue(p.issuedDate));
+  const [expiryDate, setExpiryDate] = useState(toDateInputValue(p.expiryDate));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const response = await fetch(`/api/permits/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          permitNumber: permitNumber.trim() || undefined,
+          issuedDate: issuedDate || undefined,
+          expiryDate: expiryDate || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error ?? 'Could not update that permit.');
+      }
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update that permit.');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-1.5 rounded border border-outdoor-border bg-outdoor-surface p-2 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-zinc-700">{titleCase(p.permitType)} permit</span>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          aria-label={`${titleCase(p.permitType)} permit status`}
+          className="rounded border border-outdoor-border px-1.5 py-0.5 text-xs"
+        >
+          {PERMIT_STATUSES.map((s) => (
+            <option key={s} value={s}>{titleCase(s)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <input
+          value={permitNumber}
+          onChange={(e) => setPermitNumber(e.target.value)}
+          placeholder="Permit #"
+          aria-label="Permit number"
+          className="w-28 rounded border border-outdoor-border px-1.5 py-1"
+        />
+        <label className="flex items-center gap-1">
+          Issued
+          <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} className="rounded border border-outdoor-border px-1 py-0.5" />
+        </label>
+        <label className="flex items-center gap-1">
+          Expires
+          <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="rounded border border-outdoor-border px-1 py-0.5" />
+        </label>
+      </div>
+      <p className="text-zinc-500">
+        To renew, set a new expiry date (and a new issued date, if the jurisdiction re-issued it) — this updates the same permit rather than filing a new one.
+      </p>
+      <div className="flex gap-2 pt-0.5">
+        <button type="submit" disabled={submitting} className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50">
+          {submitting ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" onClick={onCancel} className="text-xs text-zinc-500 hover:text-zinc-900">
+          Cancel
+        </button>
+      </div>
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+    </form>
+  );
+}
+
 function PermitRow({ permit: p, onChanged }: { permit: PermitData; onChanged: () => void }) {
   const [addingInspection, setAddingInspection] = useState(false);
+  const [editingPermit, setEditingPermit] = useState(false);
+
+  if (editingPermit) {
+    return (
+      <li className="py-2">
+        <EditPermitForm permit={p} onDone={() => { setEditingPermit(false); onChanged(); }} onCancel={() => setEditingPermit(false)} />
+      </li>
+    );
+  }
 
   return (
     <li className="py-2">
@@ -174,10 +275,21 @@ function PermitRow({ permit: p, onChanged }: { permit: PermitData; onChanged: ()
             {p.expiryDate && ` · expires ${new Date(p.expiryDate).toLocaleDateString()}`}
           </div>
         </div>
-        <StatusBadge
-          status={p.isExpired ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
-          label={p.isExpired ? 'Expired' : titleCase(p.status)}
-        />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge
+            status={p.isExpired ? 'blocked' : p.status === 'APPLIED' ? 'warning' : 'ok'}
+            label={p.isExpired ? 'Expired' : titleCase(p.status)}
+          />
+          <button
+            type="button"
+            onClick={() => setEditingPermit(true)}
+            aria-label={`Update ${titleCase(p.permitType)} permit — mark issued, set its permit number or expiry, or file a renewal`}
+            title="Update status, permit number, or dates — including filing a renewal"
+            className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-900"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {p.inspections.length > 0 && (

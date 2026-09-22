@@ -32,7 +32,24 @@ export default async function WorkersPage() {
       : statuses.includes('expiring_soon') || statuses.includes('aging') || statuses.includes('renewal_pending')
         ? 'warning'
         : 'ok';
-    return { worker, worst };
+    // "Review needed" buckets three genuinely different situations (see
+    // lib/domain/certifications.ts) into one badge — this spells out which
+    // one(s) actually apply on hover, rather than leaving a reader to guess
+    // whether "review needed" means a real gap or just a renewal in
+    // progress.
+    const title =
+      worst === 'blocked'
+        ? 'At least one certification has actually expired.'
+        : worst === 'warning'
+          ? [
+              statuses.includes('expiring_soon') && 'a certification is expiring soon',
+              statuses.includes('aging') && "a card that never formally expires is past its informal refresh window",
+              statuses.includes('renewal_pending') && 'a renewal has been filed and is pending, still currently valid',
+            ]
+              .filter(Boolean)
+              .join('; ') + '.'
+          : undefined;
+    return { worker, worst, title };
   });
 
   return (
@@ -49,13 +66,14 @@ export default async function WorkersPage() {
           this is a stacked card list instead of a clipped or sideways-
           scrolling table. */}
       <div className="space-y-3 sm:hidden">
-        {rows.map(({ worker, worst }) => (
+        {rows.map(({ worker, worst, title }) => (
           <Link key={worker.id} href={`/workers/${worker.id}`} className="card block hover:border-zinc-400">
             <div className="flex items-center justify-between gap-3">
               <span className="font-semibold">{worker.name}</span>
               <StatusBadge
                 status={worst}
                 label={worst === 'ok' ? 'All current' : worst === 'warning' ? 'Review needed' : 'Expired cert'}
+                title={title}
               />
             </div>
             <div className="mt-2 text-xs text-zinc-500">
@@ -77,7 +95,7 @@ export default async function WorkersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-outdoor-border bg-white">
-            {rows.map(({ worker, worst }) => (
+            {rows.map(({ worker, worst, title }) => (
               <tr key={worker.id} className="hover:bg-outdoor-surface">
                 <td className="px-4 py-3">
                   <Link href={`/workers/${worker.id}`} className="font-medium hover:underline">
@@ -90,6 +108,7 @@ export default async function WorkersPage() {
                   <StatusBadge
                     status={worst}
                     label={worst === 'ok' ? 'All current' : worst === 'warning' ? 'Review needed' : 'Expired cert'}
+                    title={title}
                   />
                 </td>
               </tr>
