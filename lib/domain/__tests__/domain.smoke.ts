@@ -12,7 +12,18 @@ import { getComplianceStatus, recordCompletion, earliestDue } from '../complianc
 import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate, bucketForecast } from '../forecasting';
 import { findOverlaps, calculateUtilization, findUnfilledRoles } from '../scheduling';
 import { getCertificationStatus, canAssignWorker, parseCertTypesList, summarizeCertificationStatuses } from '../certifications';
-import { calendarDaysUntil, isPastCalendarDate } from '../dates';
+import {
+  calendarDaysUntil,
+  isPastCalendarDate,
+  parseDateOnly,
+  parseDateInput,
+  endOfDay,
+  todayISO,
+  formatDate,
+  formatDateTime,
+  addCalendarDays,
+  weekdayOfKey,
+} from '../dates';
 import { applyCompletionToHierarchy, excludeCoveredChildren, type MaintenancePlan } from '../maintenance';
 import { computeReadiness, permitsStatusFrom } from '../readiness';
 import { custodyUpdateFor, CustodyActionRejected } from '../custody';
@@ -277,18 +288,16 @@ console.log('\ncertifications.ts — expiry status and assignment gating');
   const graceNeverFiled = getCertificationStatus(new Date('2026-09-01'), now, undefined, 'GRACE_PERIOD');
   assertEqual('GRACE_PERIOD with no renewal on file at all is a plain expired', graceNeverFiled.status, 'expired');
 
-  // Regression: the filing-deadline check used to compare raw elapsed
-  // milliseconds, which could misjudge a renewal filed right at the
-  // 90-calendar-day boundary depending on the time of day it was recorded
-  // at. A renewal filed at 11pm, exactly 90 calendar days before a
-  // date-only expiryDate, is "filed 90 days out" in every ordinary sense
-  // and must read as on-time regardless of that time-of-day component.
+  // The filing-deadline check compares calendar days in the app timezone,
+  // never raw elapsed milliseconds: a renewal filed at 11:30pm exactly 90
+  // calendar days before a date-only expiry is "filed 90 days out" in
+  // every ordinary sense and must read as on-time whatever the time of day.
   const graceFiledExactlyOnBoundaryLateInDay = getCertificationStatus(
-    new Date('2026-09-01'),
+    parseDateOnly('2026-09-01')!,
     now,
     undefined,
     'GRACE_PERIOD',
-    new Date('2026-06-03T23:30:00Z'), // exactly 90 calendar days before 2026-09-01, late in the day
+    parseDateInput('2026-06-03T23:30')!, // exactly 90 calendar days before 2026-09-01, late in the day
   );
   assertEqual(
     'GRACE_PERIOD filed exactly on the 90-day calendar boundary is on time regardless of time-of-day',
@@ -558,24 +567,42 @@ console.log('\ncustody.ts — what a scan action does to custody and status');
   assertEqual('a second defect report on an already-down asset still succeeds', secondDefect, { status: 'DOWN_FOR_SERVICE' });
 }
 
-console.log('\ndates.ts — calendar-date comparison, not exact milliseconds');
+console.log('\ndates.ts — calendar days in the app timezone, not raw milliseconds');
 {
-  // The regression case: a date-only field parses to UTC midnight, so
-  // comparing it against a `now` that carries a time-of-day component used
-  // to make a credential or permit good "through" its date read as expired
-  // hours before that date was actually over anywhere reasonable. now here
-  // is deliberately late in the UTC day of 2026-09-01 (11pm UTC — 4pm US
-  // Pacific, still clearly "September 1st" to a person reading the date).
-  const expiryDate = new Date('2026-09-01');
-  const lateSameUtcDay = new Date('2026-09-01T23:00:00Z');
-  assertEqual('a date-only field is still 0 days out late in its own UTC day, not negative', calendarDaysUntil(expiryDate, lateSameUtcDay), 0);
-  assertEqual('and is therefore not past its calendar date yet', isPastCalendarDate(expiryDate, lateSameUtcDay), false);
+  const LA = 'America/Los_Angeles';
 
-  const nextUtcDay = new Date('2026-09-02T00:00:01Z');
-  assertEqual('once the UTC calendar date has actually turned over, it reads as -1 days out', calendarDaysUntil(expiryDate, nextUtcDay), -1);
-  assertEqual('and only then as past its calendar date', isPastCalendarDate(expiryDate, nextUtcDay), true);
+  // A date typed into a form means that calendar day where the company
+  // operates: midnight in the app timezone, not UTC midnight.
+  assertEqual('a date-only string parses to midnight in the app timezone (PDT)', parseDateOnly('2026-09-25', LA)?.toISOString(), '2026-09-25T07:00:00.000Z');
+  assertEqual('and to the standard-time offset once DST has ended', parseDateOnly('2026-12-25', LA)?.toISOString(), '2026-12-25T08:00:00.000Z');
+  assertEqual('an inclusive end date is stored as the last millisecond of that day', endOfDay(parseDateOnly('2026-09-25', LA)!, LA).toISOString(), '2026-09-26T06:59:59.999Z');
+  assertEqual('a spring-forward day is 23 hours long and still ends at its own midnight', endOfDay(parseDateOnly('2026-03-08', LA)!, LA).toISOString(), '2026-03-09T06:59:59.999Z');
+  assertEqual('a fall-back day is 25 hours long and still ends at its own midnight', endOfDay(parseDateOnly('2026-11-01', LA)!, LA).toISOString(), '2026-11-02T07:59:59.999Z');
+  assertEqual('an impossible calendar date is rejected rather than rolled over', parseDateOnly('2026-02-30', LA), null);
+  assertEqual('a datetime-local value is read as wall-clock time in the app timezone', parseDateInput('2026-09-25T14:30', LA)?.toISOString(), '2026-09-25T21:30:00.000Z');
+  assertEqual('a value carrying its own zone is taken as the instant it names', parseDateInput('2026-09-25T14:30:00Z', LA)?.toISOString(), '2026-09-25T14:30:00.000Z');
+  assertEqual('garbage parses to null, never to an Invalid Date', parseDateInput('next tuesday', LA), null);
 
-  assertEqual('a target 15 calendar days out from a UTC-midnight now is exactly 15', calendarDaysUntil(new Date('2026-10-05'), new Date('2026-09-20')), 15);
+  // The regression case: a credential good "through" 25 Sep must stay
+  // valid until 25 Sep is over in the app timezone, not go dark hours early.
+  const expiry = parseDateOnly('2026-09-25', LA)!;
+  const lateOnThe25th = new Date('2026-09-26T06:00:00Z'); // 23:00 on 25 Sep in Los Angeles
+  assertEqual('late on its own day, a date-only expiry is still 0 days out', calendarDaysUntil(expiry, lateOnThe25th, LA), 0);
+  assertEqual('and is therefore not past its calendar date yet', isPastCalendarDate(expiry, lateOnThe25th, LA), false);
+  const justAfterMidnight = new Date('2026-09-26T07:00:01Z'); // 00:00:01 on 26 Sep in Los Angeles
+  assertEqual('once the app-timezone day has turned over, it reads as -1 days out', calendarDaysUntil(expiry, justAfterMidnight, LA), -1);
+  assertEqual('and only then as past its calendar date', isPastCalendarDate(expiry, justAfterMidnight, LA), true);
+  assertEqual('a target 15 calendar days out is exactly 15', calendarDaysUntil(parseDateOnly('2026-10-10', LA)!, parseDateOnly('2026-09-25', LA)!, LA), 15);
+
+  assertEqual('todayISO reports the app-timezone day, not the UTC one', todayISO(LA, new Date('2026-09-26T06:59:59Z')), '2026-09-25');
+  assertEqual('formatDate renders an unambiguous day-month-year in the app timezone', formatDate(new Date('2026-09-26T06:59:59Z'), LA), '25 Sep 2026');
+  assertEqual('formatDate uses a three-letter September, not the ICU "Sept"', formatDate(parseDateOnly('2026-09-01', LA)!, LA), '1 Sep 2026');
+  assertEqual('formatDate accepts the ISO string a client component receives', formatDate('2026-09-26T06:59:59Z', LA), '25 Sep 2026');
+  assertEqual('formatDate renders nothing for a null field', formatDate(null, LA), '');
+  assertEqual('formatDateTime adds a 24-hour clock', formatDateTime(new Date('2026-09-26T06:59:59Z'), LA), '25 Sep 2026, 23:59');
+  assertEqual('calendar-day arithmetic crosses a year boundary', addCalendarDays('2026-12-31', 1), '2027-01-01');
+  assertEqual('and a leap-free February', addCalendarDays('2026-03-01', -1), '2026-02-28');
+  assertEqual('25 Sep 2026 is a Friday', weekdayOfKey('2026-09-25'), 5);
 }
 
 console.log('\ncertifications.ts — summarizeCertificationStatuses shared bucketing');
