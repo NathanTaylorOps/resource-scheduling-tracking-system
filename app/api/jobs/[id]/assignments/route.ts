@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
-import { canAssignWorker, parseCertTypesList } from '@/lib/domain/certifications';
+import { evaluateAssignmentGate } from '@/lib/domain/certifications';
 import { apiError } from '@/lib/api';
 import { parseJsonBody, requiredString, requiredDate, ValidationError, NotFoundError, ConflictError } from '@/lib/validate';
 
@@ -59,15 +59,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const requirement = await prisma.jobRoleRequirement.findFirst({
       where: { jobId: job.id, roleOrTrade: roleOnJob },
     });
-    const requiredCertTypes = parseCertTypesList(requirement?.requiredCertTypes);
-
-    if (requiredCertTypes.length > 0) {
-      const eligibility = canAssignWorker(requiredCertTypes, worker.certifications, new Date());
-      if (!eligibility.eligible) {
-        throw new ConflictError(
-          `${worker.name} is missing or has an expired required certification: ${eligibility.missingOrExpired.join(', ')}.`,
-        );
-      }
+    const eligibility = evaluateAssignmentGate(requirement?.requiredCertTypes, worker.certifications, new Date());
+    if (!eligibility.eligible) {
+      throw new ConflictError(
+        `${worker.name} is missing or has an expired required certification: ${eligibility.missingOrExpired.join(', ')}.`,
+      );
     }
 
     // No findFirst pre-check — @@unique([workerId, jobId, roleOnJob, start,

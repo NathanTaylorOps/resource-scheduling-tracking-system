@@ -11,7 +11,7 @@
 import { getComplianceStatus, recordCompletion, earliestDue } from '../compliance';
 import { computeDailyUsageRate, forecastDaysUntilDue, resolveHybridDueDate, bucketForecast } from '../forecasting';
 import { findOverlaps, calculateUtilization, findUnfilledRoles } from '../scheduling';
-import { getCertificationStatus, canAssignWorker, parseCertTypesList, summarizeCertificationStatuses } from '../certifications';
+import { getCertificationStatus, canAssignWorker, evaluateAssignmentGate, parseCertTypesList, summarizeCertificationStatuses } from '../certifications';
 import {
   calendarDaysUntil,
   isPastCalendarDate,
@@ -386,6 +386,49 @@ console.log('\ncertifications.ts — expiry status and assignment gating');
   assertEqual('an empty string parses to no required certs', parseCertTypesList(''), []);
   assertEqual('a bare comma with nothing else parses to no required certs, not a one-item list holding an empty string', parseCertTypesList(','), []);
   assertEqual('stray commas and blank segments between real items are dropped', parseCertTypesList(' , OSHA 10 ,, , Master Electrician License ,'), ['OSHA 10', 'Master Electrician License']);
+}
+
+console.log('\ncertifications.ts: assignment hard-stop (evaluateAssignmentGate)');
+{
+  const now = new Date('2026-09-20');
+  const required = 'crane_operator';
+  const valid = { certType: 'crane_operator', expiryDate: new Date('2027-06-01') };
+  const expired = { certType: 'crane_operator', expiryDate: new Date('2026-06-01') };
+
+  assertEqual('a worker with a valid required cert passes', evaluateAssignmentGate(required, [valid], now), { eligible: true, missingOrExpired: [] });
+  assertEqual('a worker with no cert of the required type is blocked', evaluateAssignmentGate(required, [], now), { eligible: false, missingOrExpired: ['crane_operator'] });
+  assertEqual(
+    'a worker holding only an unrelated cert is blocked',
+    evaluateAssignmentGate(required, [{ certType: 'first_aid', expiryDate: new Date('2027-06-01') }], now).eligible,
+    false,
+  );
+  assertEqual('an expired required cert is blocked', evaluateAssignmentGate(required, [expired], now), { eligible: false, missingOrExpired: ['crane_operator'] });
+  assertEqual(
+    'an OSHA-10-style aging cert is not blocked',
+    evaluateAssignmentGate('osha_10', [{ certType: 'osha_10', expiryDate: new Date('2026-01-01'), renewalPattern: 'INFORMAL_RECENCY' }], now).eligible,
+    true,
+  );
+  assertEqual(
+    'a grace-period cert with a renewal filed on time (renewal pending) is not blocked',
+    evaluateAssignmentGate(
+      'epa_rrp',
+      [{ certType: 'epa_rrp', expiryDate: new Date('2026-09-01'), renewalPattern: 'GRACE_PERIOD', renewalFiledDate: new Date('2026-05-01') }],
+      now,
+    ).eligible,
+    true,
+  );
+  assertEqual(
+    'a grace-period cert with no renewal filed is blocked',
+    evaluateAssignmentGate('epa_rrp', [{ certType: 'epa_rrp', expiryDate: new Date('2026-09-01'), renewalPattern: 'GRACE_PERIOD' }], now).eligible,
+    false,
+  );
+  assertEqual('a role with no requirement always passes', evaluateAssignmentGate(undefined, [], now).eligible, true);
+  assertEqual('a requirement that parses to nothing always passes', evaluateAssignmentGate(' , ', [], now).eligible, true);
+  assertEqual(
+    'every required cert must hold: one valid, one missing blocks and names the missing one',
+    evaluateAssignmentGate('crane_operator, first_aid', [valid], now),
+    { eligible: false, missingOrExpired: ['first_aid'] },
+  );
 }
 
 console.log('\nsubcontractors.ts — entity-level COI and license compliance');

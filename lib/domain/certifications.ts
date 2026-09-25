@@ -222,3 +222,20 @@ export function canAssignWorker(
 
   return { eligible: missingOrExpired.length === 0, missingOrExpired };
 }
+
+/**
+ * The assignment hard-stop as one pure decision: given the stored
+ * requiredCertTypes value of the job's matching JobRoleRequirement (null or
+ * undefined when the role has no requirement), the worker's certification
+ * records, and the current time, says whether the assignment may proceed.
+ * The assignments route calls this so the rule can be tested without Prisma.
+ */
+export function evaluateAssignmentGate(
+  requiredCertTypesRaw: string | null | undefined,
+  workerCertifications: Certification[],
+  now: Date,
+): AssignmentEligibility {
+  const requiredCertTypes = parseCertTypesList(requiredCertTypesRaw);
+  if (requiredCertTypes.length === 0) return { eligible: true, missingOrExpired: [] };
+  return canAssignWorker(requiredCertTypes, workerCertifications, now);
+}

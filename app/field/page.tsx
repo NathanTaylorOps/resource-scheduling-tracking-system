@@ -28,7 +28,7 @@ export default async function FieldJobPickerPage() {
     <div className="mx-auto max-w-lg space-y-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Field view</h1>
-        <p className="mt-1 text-sm text-zinc-500">Pick your job — today's crew, equipment, and permit status, and quick actions to log the day.</p>
+        <p className="mt-1 text-sm text-zinc-500">Pick your job — today&apos;s crew, equipment, and permit status, and quick actions to log the day.</p>
       </div>
       <div className="space-y-3">
         {readinessByJob.map(({ job, readiness }) => (
