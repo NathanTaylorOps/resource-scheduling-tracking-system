@@ -14,6 +14,13 @@ import { fetchClimatologicalOutlook } from './outlook';
 export const FORECAST_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — matches how often a real NWS forecast actually updates
 export const OUTLOOK_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — climatological normals don't move fast enough to refresh hourly
 
+// A forced refresh (the dashboard's "Refresh now" button) deliberately
+// bypasses the TTL above, so without a floor of its own a client hitting
+// that endpoint in a loop could hammer the real NWS/climatology APIs on
+// every single click. This caps how often "force" can actually skip the
+// cache, independent of the layer's own TTL.
+export const FORCE_REFRESH_COOLDOWN_MS = 60 * 1000;
+
 export interface LayerResult<T> {
   data: T | null;
   fetchedAt: string | null;
@@ -31,8 +38,9 @@ export async function refreshLayer<T>(
 ): Promise<LayerResult<T>> {
   const existing = await prisma.weatherCache.findUnique({ where: { jobId_layer: { jobId, layer } } });
   const isStale = !existing || existing.staleAfter < new Date();
+  const withinForceCooldown = !!existing && Date.now() - existing.fetchedAt.getTime() < FORCE_REFRESH_COOLDOWN_MS;
 
-  if (!force && existing && !isStale) {
+  if ((!force || withinForceCooldown) && existing && !isStale) {
     return { data: JSON.parse(existing.dataJson) as T, fetchedAt: existing.fetchedAt.toISOString(), stale: false, error: null };
   }
 

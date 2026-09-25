@@ -13,11 +13,11 @@ import { ChevronLeft, CircleCheck, TriangleAlert, CircleX } from 'lucide-react';
 export const dynamic = 'force-dynamic';
 
 /**
- * The single-job, mobile-first slice the README's roadmap describes: today's
- * crew, equipment, and permit status for the one job someone is standing
- * on, plus the two quick-add actions (daily log, toolbox talk) that matter
- * most from the field — fast enough to use one-handed, not the full GM
- * cross-job detail view at /jobs/[id].
+ * The single-job, mobile-first slice the README's "Mobile-first field view"
+ * section describes: today's crew, equipment, and permit status for the one
+ * job someone is standing on, plus the two quick-add actions (daily log,
+ * toolbox talk) that matter most from the field — fast enough to use
+ * one-handed, not the full GM cross-job detail view at /jobs/[id].
  */
 export default async function FieldJobPage({ params }: { params: { jobId: string } }) {
   const prisma = getDb();
@@ -86,7 +86,7 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
                   <Link href={`/workers/${a.worker.id}`} className="font-medium hover:underline">
                     {a.worker.name}
                   </Link>
-                  <div className="text-xs text-zinc-500">{a.roleOnJob}</div>
+                  <div className="text-sm text-zinc-500">{a.roleOnJob}</div>
                 </div>
                 <Icon className={`h-5 w-5 ${iconClass}`} aria-label={hasExpired ? 'Certification expired' : hasReview ? 'Certification to review' : 'Certifications current'} />
               </li>
@@ -104,7 +104,7 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
               <Link href={`/equipment/${e.id}`} className="font-medium hover:underline">
                 {e.name}
               </Link>
-              <span className={`text-xs font-medium ${e.status === 'DOWN_FOR_SERVICE' ? 'text-status-blocked' : 'text-zinc-500'}`}>
+              <span className={`text-sm font-medium ${e.status === 'DOWN_FOR_SERVICE' ? 'text-status-blocked' : 'text-zinc-500'}`}>
                 {e.status.replace(/_/g, ' ').toLowerCase()}
               </span>
             </li>

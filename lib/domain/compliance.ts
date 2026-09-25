@@ -120,7 +120,7 @@ export function recordCompletion(
  * one, which the schema doesn't group. This is the primitive that
  * comparison would run on once that grouping exists; verified against its
  * own worked example below rather than deleted ahead of that modeling
- * decision. See README, "Known limitations / roadmap."
+ * decision.
  */
 export function earliestDue(
   schedules: Array<{ schedule: ComplianceSchedule; currentValue: number }>,

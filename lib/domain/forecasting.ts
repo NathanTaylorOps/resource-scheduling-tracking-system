@@ -68,8 +68,8 @@ export function forecastDaysUntilDue(
  * Not called from the app today, for the same reason earliestDue in
  * lib/domain/compliance.ts isn't: a hybrid calendar-and-usage requirement
  * isn't representable as one MaintenancePlan row yet. Kept and
- * smoke-tested as the primitive that resolution would run on once it is —
- * see README, "Known limitations / roadmap."
+ * smoke-tested as the primitive that resolution would run on once that
+ * modeling exists.
  */
 export function resolveHybridDueDate(
   calendarDueDate: Date,
@@ -94,10 +94,9 @@ export type ForecastBucket = '0-30' | '31-60' | '61-90' | 'beyond';
  * against their tolerance-window status (ok/due_soon/in_tolerance/overdue,
  * via getComplianceStatus), which answers "is this due" for that asset
  * rather than "what's due fleet-wide in the next 30/60/90 days" the way
- * this bucketing is meant for. That fleet-wide view doesn't exist yet — see
- * README, "Known limitations / roadmap" — so this stays as the primitive
- * it would bucket by, exercised by its own worked example rather than left
- * with no coverage at all in the meantime.
+ * this bucketing is meant for. That fleet-wide view doesn't exist yet, so
+ * this stays as the primitive it would bucket by, exercised by its own
+ * worked example rather than left with no coverage at all in the meantime.
  */
 export function bucketForecast(dueDate: Date, now: Date): ForecastBucket {
   const daysOut = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);

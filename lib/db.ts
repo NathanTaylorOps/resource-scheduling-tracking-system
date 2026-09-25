@@ -93,7 +93,7 @@ function ensureSessionDatabase(sessionId: string): void {
 
   if (!fs.existsSync(TEMPLATE_DB_PATH)) {
     throw new Error(
-      'prisma/template.db is missing. Run "npm run db:build-template" once before starting the server (see README, "Running it locally").',
+      'prisma/template.db is missing. Run "npm run db:build-template" once before starting the server (see README, "Getting started").',
     );
   }
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
