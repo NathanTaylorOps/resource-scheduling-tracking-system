@@ -2,15 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
 import { parseCertTypesList } from '@/lib/domain/certifications';
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, optionalString, optionalNumber, NotFoundError, ConflictError } from '@/lib/validate';
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-}
-
-interface CreateRequirementBody {
-  roleOrTrade: string;
-  requiredCount?: number;
-  requiredCertTypes?: string;
 }
 
 /**
@@ -34,61 +30,48 @@ interface CreateRequirementBody {
  * with possibly different required certs, so it's rejected here instead.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const job = await prisma.job.findUnique({ where: { id: params.id } });
-  if (!job) {
-    return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });
-  }
-
-  let body: CreateRequirementBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
-
-  const roleOrTrade = body.roleOrTrade?.trim();
-  if (!roleOrTrade) {
-    return NextResponse.json({ error: 'Enter a role or trade.' }, { status: 400 });
-  }
-  const requiredCount = body.requiredCount ?? 1;
-  if (!Number.isInteger(requiredCount) || requiredCount < 1) {
-    return NextResponse.json({ error: 'Required count must be a whole number of at least 1.' }, { status: 400 });
-  }
-
-  const existing = await prisma.jobRoleRequirement.findFirst({ where: { jobId: job.id, roleOrTrade } });
-  if (existing) {
-    return NextResponse.json(
-      { error: `${roleOrTrade} already has a staffing requirement on this job. Remove it below before adding a replacement.` },
-      { status: 409 },
-    );
-  }
-
-  const parsedCertTypes = parseCertTypesList(body.requiredCertTypes);
-  try {
-    const requirement = await prisma.jobRoleRequirement.create({
-      data: {
-        jobId: job.id,
-        roleOrTrade,
-        requiredCount,
-        requiredCertTypes: parsedCertTypes.length > 0 ? parsedCertTypes.join(', ') : null,
-      },
-    });
-    return NextResponse.json({ id: requirement.id }, { status: 201 });
-  } catch (error) {
-    // The findFirst check above is a courtesy for the common case (a fast
-    // 409 with a clear message before ever touching the write). It cannot
-    // by itself prevent two concurrent submissions for the same role from
-    // both passing it and racing into create() — the @@unique([jobId,
-    // roleOrTrade]) constraint on JobRoleRequirement is what actually
-    // enforces "one row per role," and this is what turns its violation
-    // into the same clean 409 rather than an unhandled 500.
-    if (isUniqueConstraintError(error)) {
-      return NextResponse.json(
-        { error: `${roleOrTrade} already has a staffing requirement on this job. Remove it below before adding a replacement.` },
-        { status: 409 },
-      );
+    const prisma = getDb();
+    const job = await prisma.job.findUnique({ where: { id: params.id } });
+    if (!job) {
+      throw new NotFoundError('No job matches that id.');
     }
-    throw error;
+
+    const body = await parseJsonBody(request);
+    const roleOrTrade = requiredString(body, 'roleOrTrade', 'Enter a role or trade.');
+    const requiredCount =
+      optionalNumber(body, 'requiredCount', { integer: true, min: 1 }, 'Required count must be a whole number of at least 1.') ?? 1;
+    const duplicateMessage = `${roleOrTrade} already has a staffing requirement on this job. Remove it below before adding a replacement.`;
+
+    const existing = await prisma.jobRoleRequirement.findFirst({ where: { jobId: job.id, roleOrTrade } });
+    if (existing) {
+      throw new ConflictError(duplicateMessage);
+    }
+
+    const parsedCertTypes = parseCertTypesList(optionalString(body, 'requiredCertTypes'));
+    try {
+      const requirement = await prisma.jobRoleRequirement.create({
+        data: {
+          jobId: job.id,
+          roleOrTrade,
+          requiredCount,
+          requiredCertTypes: parsedCertTypes.length > 0 ? parsedCertTypes.join(', ') : null,
+        },
+      });
+      return NextResponse.json({ id: requirement.id }, { status: 201 });
+    } catch (error) {
+      // The findFirst check above is a courtesy for the common case. It
+      // cannot by itself prevent two concurrent submissions for the same
+      // role from both passing it and racing into create() — the
+      // @@unique([jobId, roleOrTrade]) constraint is what actually enforces
+      // "one row per role," and this turns its violation into the same
+      // clean 409.
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictError(duplicateMessage);
+      }
+      throw error;
+    }
+  } catch (err) {
+    return apiError(err);
   }
 }

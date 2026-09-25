@@ -62,11 +62,11 @@ export function DailyLogForm({ jobId, crew, otherWorkers = [], existingLog, onSu
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             logDate,
-            weatherSummary: weatherSummary.trim() || undefined,
+            weatherSummary: weatherSummary.trim() || null,
             crewCount,
             workPerformed: workPerformed.trim(),
-            delaysNotes: delaysNotes.trim() || undefined,
-            submittedBy: submittedBy || undefined,
+            delaysNotes: delaysNotes.trim() || null,
+            submittedBy: submittedBy || null,
           }),
         },
       );

@@ -1,54 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-
-interface UpdateLicenseBody {
-  licenseNumber?: string;
-  licenseClass?: string;
-  licenseIssuingAuthority?: string;
-  licenseExpiryDate?: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, has, requiredString, optionalString, optionalDate, NotFoundError } from '@/lib/validate';
 
 /**
  * Updates a subcontractor firm's trade-license fields in place — unlike a
  * COI record, there's only ever one current license per firm in this
  * model, so a renewal overwrites rather than adding a new row.
+ *
+ * A PATCH touches only the fields the client sent. A key sent as null or
+ * blank clears that field; a key left out leaves it as it was.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const subcontractor = await prisma.subcontractor.findUnique({ where: { id: params.id } });
-  if (!subcontractor) {
-    return NextResponse.json({ error: 'No subcontractor matches that id.' }, { status: 404 });
-  }
-
-  let body: UpdateLicenseBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const subcontractor = await prisma.subcontractor.findUnique({ where: { id: params.id } });
+    if (!subcontractor) {
+      throw new NotFoundError('No subcontractor matches that id.');
+    }
 
-  const licenseNumber = body.licenseNumber?.trim();
-  if (!licenseNumber) {
-    return NextResponse.json({ error: 'Enter the license number.' }, { status: 400 });
-  }
-  const licenseIssuingAuthority = body.licenseIssuingAuthority?.trim();
-  if (!licenseIssuingAuthority) {
-    return NextResponse.json({ error: 'Enter the issuing authority.' }, { status: 400 });
-  }
-  const licenseExpiryDate = body.licenseExpiryDate ? new Date(body.licenseExpiryDate) : null;
-  if (body.licenseExpiryDate && Number.isNaN(licenseExpiryDate?.getTime())) {
-    return NextResponse.json({ error: 'Enter a valid expiry date.' }, { status: 400 });
-  }
+    const body = await parseJsonBody(request);
+    const data: {
+      licenseNumber?: string;
+      licenseClass?: string | null;
+      licenseIssuingAuthority?: string;
+      licenseExpiryDate?: Date | null;
+    } = {};
 
-  await prisma.subcontractor.update({
-    where: { id: subcontractor.id },
-    data: {
-      licenseNumber,
-      licenseClass: body.licenseClass?.trim() || null,
-      licenseIssuingAuthority,
-      licenseExpiryDate,
-    },
-  });
+    if (has(body, 'licenseNumber')) data.licenseNumber = requiredString(body, 'licenseNumber', 'Enter the license number.');
+    if (has(body, 'licenseClass')) data.licenseClass = optionalString(body, 'licenseClass');
+    if (has(body, 'licenseIssuingAuthority')) {
+      data.licenseIssuingAuthority = requiredString(body, 'licenseIssuingAuthority', 'Enter the issuing authority.');
+    }
+    if (has(body, 'licenseExpiryDate')) data.licenseExpiryDate = optionalDate(body, 'licenseExpiryDate', 'Enter a valid expiry date.');
 
-  return NextResponse.json({ ok: true });
+    if (Object.keys(data).length > 0) {
+      await prisma.subcontractor.update({ where: { id: subcontractor.id }, data });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return apiError(err);
+  }
 }

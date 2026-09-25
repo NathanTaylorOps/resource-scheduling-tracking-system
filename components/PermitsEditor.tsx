@@ -197,9 +197,9 @@ function EditPermitForm({ permit: p, onDone, onCancel }: { permit: PermitData; o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status,
-          permitNumber: permitNumber.trim() || undefined,
-          issuedDate: issuedDate || undefined,
-          expiryDate: expiryDate || undefined,
+          permitNumber: permitNumber.trim() || null,
+          issuedDate: issuedDate || null,
+          expiryDate: expiryDate || null,
         }),
       });
       if (!response.ok) {
@@ -483,13 +483,13 @@ function InspectionOutcomeForm({ inspection: i, onDone, onCancel }: { inspection
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status,
-          scheduledDate: scheduledDate || undefined,
-          completedDate: completedDate || undefined,
-          inspectorNotes: inspectorNotes.trim() || undefined,
-          correctionNotes: correctionNotes.trim() || undefined,
-          correctionResponsible: correctionResponsible.trim() || undefined,
-          reinspectionChannel: status === 'FAILED' ? reinspectionChannel : undefined,
-          reinspectionScheduledDate: reinspectionScheduledDate || undefined,
+          scheduledDate: scheduledDate || null,
+          completedDate: completedDate || null,
+          inspectorNotes: inspectorNotes.trim() || null,
+          correctionNotes: correctionNotes.trim() || null,
+          correctionResponsible: correctionResponsible.trim() || null,
+          reinspectionChannel: status === 'FAILED' ? reinspectionChannel : null,
+          reinspectionScheduledDate: reinspectionScheduledDate || null,
         }),
       });
       if (!response.ok) {

@@ -40,9 +40,9 @@ export function SubcontractorLicenseEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           licenseNumber: number.trim(),
-          licenseClass: licClass.trim() || undefined,
+          licenseClass: licClass.trim() || null,
           licenseIssuingAuthority: authority.trim(),
-          licenseExpiryDate: expiry || undefined,
+          licenseExpiryDate: expiry || null,
         }),
       });
       if (!response.ok) {

@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { LienWaiverType } from '@/lib/enums';
-
-interface CreateLienWaiverBody {
-  subcontractorId: string;
-  waiverType: string;
-  payPeriodStart: string;
-  payPeriodEnd: string;
-  amount?: number;
-  notes?: string;
-}
-
-const VALID_WAIVER_TYPES = new Set<string>(Object.values(LienWaiverType));
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, optionalString, requiredDate, requiredEnum, optionalNumber, NotFoundError, ValidationError } from '@/lib/validate';
 
 /**
  * Opens a lien waiver against a job for one subcontractor's pay period —
@@ -21,52 +12,41 @@ const VALID_WAIVER_TYPES = new Set<string>(Object.values(LienWaiverType));
  * the transition worth auditing, not this creation.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const job = await prisma.job.findUnique({ where: { id: params.id } });
-  if (!job) {
-    return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });
-  }
-
-  let body: CreateLienWaiverBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const job = await prisma.job.findUnique({ where: { id: params.id } });
+    if (!job) {
+      throw new NotFoundError('No job matches that id.');
+    }
 
-  if (!body.subcontractorId) {
-    return NextResponse.json({ error: 'Select a subcontractor.' }, { status: 400 });
-  }
-  const subcontractor = await prisma.subcontractor.findUnique({ where: { id: body.subcontractorId } });
-  if (!subcontractor) {
-    return NextResponse.json({ error: 'No subcontractor matches that id.' }, { status: 400 });
-  }
-  if (!body.waiverType || !VALID_WAIVER_TYPES.has(body.waiverType)) {
-    return NextResponse.json({ error: 'Select a waiver type.' }, { status: 400 });
-  }
-  const payPeriodStart = new Date(body.payPeriodStart);
-  const payPeriodEnd = new Date(body.payPeriodEnd);
-  if (Number.isNaN(payPeriodStart.getTime()) || Number.isNaN(payPeriodEnd.getTime())) {
-    return NextResponse.json({ error: 'Enter a valid pay period.' }, { status: 400 });
-  }
-  if (payPeriodEnd < payPeriodStart) {
-    return NextResponse.json({ error: 'Pay period end must be on or after its start.' }, { status: 400 });
-  }
-  if (body.amount !== undefined && (typeof body.amount !== 'number' || !Number.isFinite(body.amount) || body.amount < 0)) {
-    return NextResponse.json({ error: 'Amount must be a non-negative number.' }, { status: 400 });
-  }
+    const body = await parseJsonBody(request);
+    const subcontractorId = requiredString(body, 'subcontractorId', 'Select a subcontractor.');
+    const subcontractor = await prisma.subcontractor.findUnique({ where: { id: subcontractorId } });
+    if (!subcontractor) {
+      throw new ValidationError('No subcontractor matches that id.');
+    }
+    const waiverType = requiredEnum(body, 'waiverType', LienWaiverType, 'Select a waiver type.');
+    const payPeriodStart = requiredDate(body, 'payPeriodStart', 'Enter a valid pay period.');
+    const payPeriodEnd = requiredDate(body, 'payPeriodEnd', 'Enter a valid pay period.');
+    if (payPeriodEnd < payPeriodStart) {
+      throw new ValidationError('Pay period end must be on or after its start.');
+    }
+    const amount = optionalNumber(body, 'amount', { min: 0 }, 'Amount must be a non-negative number.');
 
-  const waiver = await prisma.lienWaiver.create({
-    data: {
-      jobId: job.id,
-      subcontractorId: subcontractor.id,
-      waiverType: body.waiverType,
-      payPeriodStart,
-      payPeriodEnd,
-      amount: body.amount ?? null,
-      notes: body.notes?.trim() || null,
-    },
-  });
+    const waiver = await prisma.lienWaiver.create({
+      data: {
+        jobId: job.id,
+        subcontractorId: subcontractor.id,
+        waiverType,
+        payPeriodStart,
+        payPeriodEnd,
+        amount,
+        notes: optionalString(body, 'notes'),
+      },
+    });
 
-  return NextResponse.json({ id: waiver.id }, { status: 201 });
+    return NextResponse.json({ id: waiver.id }, { status: 201 });
+  } catch (err) {
+    return apiError(err);
+  }
 }

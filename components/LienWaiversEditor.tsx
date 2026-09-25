@@ -116,7 +116,7 @@ function AddWaiverForm({
           payPeriodStart,
           payPeriodEnd,
           amount: amount ? Number(amount) : undefined,
-          notes: notes.trim() || undefined,
+          notes: notes.trim() || null,
         }),
       });
       if (!response.ok) {
@@ -263,7 +263,7 @@ function EditWaiverForm({ waiver: w, onDone, onCancel }: { waiver: LienWaiverDat
         body: JSON.stringify({
           status,
           receivedDate: status === 'RECEIVED' ? receivedDate : undefined,
-          notes: notes.trim() || undefined,
+          notes: notes.trim() || null,
         }),
       });
       if (!response.ok) {

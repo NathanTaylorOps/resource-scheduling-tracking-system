@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { JobStatus, WeatherSensitivity } from '@/lib/enums';
-
-interface CreateJobBody {
-  name: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  status?: string;
-  startDate: string;
-  targetEndDate: string;
-  weatherSensitivity?: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, requiredDate, requiredCoordinates, optionalEnum, ValidationError } from '@/lib/validate';
 
 /**
  * Creates a new job. latitude/longitude are entered by hand rather than
@@ -22,45 +13,33 @@ interface CreateJobBody {
  * optional field could.
  */
 export async function POST(request: NextRequest) {
-  const prisma = getDb();
-  let body: CreateJobBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const body = await parseJsonBody(request);
 
-  const name = body.name?.trim();
-  if (!name) {
-    return NextResponse.json({ error: 'Enter a job name.' }, { status: 400 });
-  }
-  const address = body.address?.trim();
-  if (!address) {
-    return NextResponse.json({ error: 'Enter a job address.' }, { status: 400 });
-  }
-  if (typeof body.latitude !== 'number' || Number.isNaN(body.latitude) || body.latitude < -90 || body.latitude > 90) {
-    return NextResponse.json({ error: 'Enter a valid latitude, between -90 and 90.' }, { status: 400 });
-  }
-  if (typeof body.longitude !== 'number' || Number.isNaN(body.longitude) || body.longitude < -180 || body.longitude > 180) {
-    return NextResponse.json({ error: 'Enter a valid longitude, between -180 and 180.' }, { status: 400 });
-  }
-  const startDate = new Date(body.startDate);
-  const targetEndDate = new Date(body.targetEndDate);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(targetEndDate.getTime())) {
-    return NextResponse.json({ error: 'Enter valid start and target-completion dates.' }, { status: 400 });
-  }
-  if (targetEndDate.getTime() <= startDate.getTime()) {
-    return NextResponse.json({ error: 'Target completion must be after the start date.' }, { status: 400 });
-  }
-  const status = body.status && Object.values(JobStatus).includes(body.status as JobStatus) ? body.status : JobStatus.PLANNING;
-  const weatherSensitivity =
-    body.weatherSensitivity && Object.values(WeatherSensitivity).includes(body.weatherSensitivity as WeatherSensitivity)
-      ? body.weatherSensitivity
-      : WeatherSensitivity.CONDITIONAL;
+    const name = requiredString(body, 'name', 'Enter a job name.');
+    const address = requiredString(body, 'address', 'Enter a job address.');
+    const { latitude, longitude } = requiredCoordinates(body);
+    const startDate = requiredDate(body, 'startDate', 'Enter valid start and target-completion dates.');
+    const targetEndDate = requiredDate(body, 'targetEndDate', 'Enter valid start and target-completion dates.');
+    if (targetEndDate.getTime() <= startDate.getTime()) {
+      throw new ValidationError('Target completion must be after the start date.');
+    }
+    const status = optionalEnum(body, 'status', JobStatus, JobStatus.PLANNING, 'Select a valid job status.');
+    const weatherSensitivity = optionalEnum(
+      body,
+      'weatherSensitivity',
+      WeatherSensitivity,
+      WeatherSensitivity.CONDITIONAL,
+      'Select a valid weather sensitivity.',
+    );
 
-  const job = await prisma.job.create({
-    data: { name, address, latitude: body.latitude, longitude: body.longitude, status, startDate, targetEndDate, weatherSensitivity },
-  });
+    const job = await prisma.job.create({
+      data: { name, address, latitude, longitude, status, startDate, targetEndDate, weatherSensitivity },
+    });
 
-  return NextResponse.json({ id: job.id }, { status: 201 });
+    return NextResponse.json({ id: job.id }, { status: 201 });
+  } catch (err) {
+    return apiError(err);
+  }
 }

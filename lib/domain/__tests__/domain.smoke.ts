@@ -30,6 +30,23 @@ import { custodyUpdateFor, CustodyActionRejected } from '../custody';
 import { findEquipmentConflicts } from '../equipment';
 import { evaluateSubcontractorCompliance } from '../subcontractors';
 import { isValidSessionId } from '../../session';
+import {
+  ValidationError,
+  parseJsonBody,
+  has,
+  requiredString,
+  optionalString,
+  requiredDate,
+  optionalDate,
+  requiredNumber,
+  optionalNumber,
+  requiredEnum,
+  optionalEnum,
+  optionalBoolean,
+  optionalStringArray,
+  requiredCoordinates,
+  optionalCoordinates,
+} from '../../validate';
 
 let passed = 0;
 let failed = 0;
@@ -629,5 +646,64 @@ console.log('\nsession.ts — session ids must be UUIDs before they touch a file
   assertEqual('non-hex characters are rejected', isValidSessionId('3f2504e0-4f89-41d3-9a0c-0305e82c33zz'), false);
 }
 
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
+async function validateSection() {
+  console.log('\nvalidate.ts — request bodies are checked for shape, not just presence');
+  const fakeRequest = (raw: string) => ({ text: async () => raw });
+  const bodyOf = async (raw: string) => parseJsonBody(fakeRequest(raw));
+
+  assertEqual('a JSON object body parses', await bodyOf('{"name":"Cedar Hollow"}'), { name: 'Cedar Hollow' });
+  await bodyOf('null').then(() => assertEqual('a null body is rejected', 'no throw', 'throws'), (err) => assertEqual('a null body is rejected', err instanceof ValidationError, true));
+  await bodyOf('[1,2]').then(() => assertEqual('an array body is rejected', 'no throw', 'throws'), (err) => assertEqual('an array body is rejected', err instanceof ValidationError, true));
+  await bodyOf('"text"').then(() => assertEqual('a bare string body is rejected', 'no throw', 'throws'), (err) => assertEqual('a bare string body is rejected', err instanceof ValidationError, true));
+  await bodyOf('{not json').then(() => assertEqual('malformed JSON is rejected', 'no throw', 'throws'), (err) => assertEqual('malformed JSON is rejected', err instanceof ValidationError, true));
+  await bodyOf('').then(() => assertEqual('an empty body is rejected by default', 'no throw', 'throws'), (err) => assertEqual('an empty body is rejected by default', err instanceof ValidationError, true));
+  assertEqual('an empty body reads as {} when the route allows it', await parseJsonBody(fakeRequest(''), { allowEmpty: true }), {});
+
+  assertEqual('has() sees a key sent as null', has({ notes: null }, 'notes'), true);
+  assertEqual('has() does not see an absent key', has({}, 'notes'), false);
+
+  assertEqual('requiredString trims', requiredString({ name: '  Priya  ' }, 'name', 'Enter a name.'), 'Priya');
+  assertThrows('requiredString rejects a blank string', () => requiredString({ name: '   ' }, 'name', 'Enter a name.'), ValidationError);
+  assertThrows('requiredString rejects a number', () => requiredString({ name: 42 }, 'name', 'Enter a name.'), ValidationError);
+  assertThrows('requiredString rejects null', () => requiredString({ name: null }, 'name', 'Enter a name.'), ValidationError);
+  assertEqual('optionalString reads a blank as null', optionalString({ notes: '  ' }, 'notes'), null);
+  assertEqual('optionalString reads absent as null', optionalString({}, 'notes'), null);
+  assertThrows('optionalString rejects an object', () => optionalString({ notes: { a: 1 } }, 'notes'), ValidationError);
+
+  assertEqual('requiredDate parses a form date to app-timezone midnight', requiredDate({ d: '2026-09-25' }, 'd', 'Enter a date.')?.toISOString(), parseDateOnly('2026-09-25')!.toISOString());
+  assertThrows('requiredDate rejects a number', () => requiredDate({ d: 1700000000000 }, 'd', 'Enter a date.'), ValidationError);
+  assertThrows('requiredDate rejects an unparseable string', () => requiredDate({ d: 'tomorrow' }, 'd', 'Enter a date.'), ValidationError);
+  assertEqual('optionalDate reads blank as null', optionalDate({ d: '' }, 'd', 'Enter a date.'), null);
+  assertThrows('optionalDate still rejects garbage', () => optionalDate({ d: '2026-13-45' }, 'd', 'Enter a date.'), ValidationError);
+
+  assertEqual('requiredNumber accepts an in-range value', requiredNumber({ n: 5 }, 'n', { min: 0, max: 10 }, 'bad'), 5);
+  assertThrows('requiredNumber rejects a numeric string', () => requiredNumber({ n: '5' }, 'n', {}, 'bad'), ValidationError);
+  assertThrows('requiredNumber rejects NaN', () => requiredNumber({ n: NaN }, 'n', {}, 'bad'), ValidationError);
+  assertThrows('requiredNumber enforces an integer rule', () => requiredNumber({ n: 1.5 }, 'n', { integer: true }, 'bad'), ValidationError);
+  assertThrows('requiredNumber enforces a minimum', () => requiredNumber({ n: -1 }, 'n', { min: 0 }, 'bad'), ValidationError);
+  assertEqual('optionalNumber reads absent as null', optionalNumber({}, 'n', {}, 'bad'), null);
+
+  assertEqual('requiredEnum accepts a member of a lib/enums const object', requiredEnum({ s: 'ACTIVE' }, 's', { PLANNING: 'PLANNING', ACTIVE: 'ACTIVE' } as const, 'bad'), 'ACTIVE');
+  assertThrows('requiredEnum rejects a lowercase near-miss', () => requiredEnum({ s: 'active' }, 's', ['PLANNING', 'ACTIVE'] as const, 'bad'), ValidationError);
+  assertEqual('optionalEnum falls back when absent', optionalEnum({}, 's', ['A', 'B'] as const, 'A', 'bad'), 'A');
+  assertThrows('optionalEnum rejects a present non-member rather than silently defaulting', () => optionalEnum({ s: 'C' }, 's', ['A', 'B'] as const, 'A', 'bad'), ValidationError);
+
+  assertEqual('optionalBoolean defaults to false', optionalBoolean({}, 'flag'), false);
+  assertThrows('optionalBoolean rejects the string "true"', () => optionalBoolean({ flag: 'true' }, 'flag'), ValidationError);
+  assertEqual('optionalStringArray trims and deduplicates', optionalStringArray({ ids: [' a ', 'a', 'b', ''] }, 'ids', 'bad'), ['a', 'b']);
+  assertThrows('optionalStringArray rejects a non-array', () => optionalStringArray({ ids: 'a,b' }, 'ids', 'bad'), ValidationError);
+
+  assertEqual('coordinates inside the valid ranges pass', requiredCoordinates({ latitude: 47.9, longitude: -122.1 }), { latitude: 47.9, longitude: -122.1 });
+  assertThrows('a latitude past 90 is rejected', () => requiredCoordinates({ latitude: 91, longitude: 0 }), ValidationError);
+  assertThrows('a longitude past 180 is rejected', () => requiredCoordinates({ latitude: 0, longitude: -181 }), ValidationError);
+  assertEqual('a scan with no GPS fix sends neither coordinate', optionalCoordinates({}), { latitude: null, longitude: null });
+  assertThrows('a scan with only one coordinate is rejected', () => optionalCoordinates({ latitude: 47.9 }), ValidationError);
+  assertThrows('an out-of-range optional latitude is rejected', () => optionalCoordinates({ latitude: -95, longitude: 10 }), ValidationError);
+}
+
+// The validate.ts checks await a body parser, so they run last, after every
+// synchronous section above, and the summary waits for them.
+validateSection().then(() => {
+  console.log(`\n${passed} passed, ${failed} failed`);
+  if (failed > 0) process.exit(1);
+});

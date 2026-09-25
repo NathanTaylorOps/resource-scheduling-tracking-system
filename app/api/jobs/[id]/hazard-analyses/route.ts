@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-
-interface CreateJhaBody {
-  taskDescription: string;
-  hazardsIdentified: string;
-  controlMeasures: string;
-  reviewDate: string;
-  preparedByWorkerId?: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, optionalString, requiredDate, NotFoundError, ValidationError } from '@/lib/validate';
 
 /**
  * Records a job hazard analysis for one task on a job — the per-task
@@ -20,52 +14,39 @@ interface CreateJhaBody {
  * transition on.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const job = await prisma.job.findUnique({ where: { id: params.id } });
-  if (!job) {
-    return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });
-  }
-
-  let body: CreateJhaBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
-
-  const taskDescription = body.taskDescription?.trim();
-  const hazardsIdentified = body.hazardsIdentified?.trim();
-  const controlMeasures = body.controlMeasures?.trim();
-  if (!taskDescription) {
-    return NextResponse.json({ error: 'Describe the task.' }, { status: 400 });
-  }
-  if (!hazardsIdentified) {
-    return NextResponse.json({ error: 'List the hazards identified.' }, { status: 400 });
-  }
-  if (!controlMeasures) {
-    return NextResponse.json({ error: 'List the control measures.' }, { status: 400 });
-  }
-  const reviewDate = new Date(body.reviewDate);
-  if (Number.isNaN(reviewDate.getTime())) {
-    return NextResponse.json({ error: 'Enter a valid review date.' }, { status: 400 });
-  }
-  if (body.preparedByWorkerId) {
-    const worker = await prisma.worker.findUnique({ where: { id: body.preparedByWorkerId } });
-    if (!worker) {
-      return NextResponse.json({ error: 'No worker matches the prepared-by id.' }, { status: 400 });
+    const prisma = getDb();
+    const job = await prisma.job.findUnique({ where: { id: params.id } });
+    if (!job) {
+      throw new NotFoundError('No job matches that id.');
     }
+
+    const body = await parseJsonBody(request);
+    const taskDescription = requiredString(body, 'taskDescription', 'Describe the task.');
+    const hazardsIdentified = requiredString(body, 'hazardsIdentified', 'List the hazards identified.');
+    const controlMeasures = requiredString(body, 'controlMeasures', 'List the control measures.');
+    const reviewDate = requiredDate(body, 'reviewDate', 'Enter a valid review date.');
+    const preparedByWorkerId = optionalString(body, 'preparedByWorkerId');
+    if (preparedByWorkerId) {
+      const worker = await prisma.worker.findUnique({ where: { id: preparedByWorkerId } });
+      if (!worker) {
+        throw new ValidationError('No worker matches the prepared-by id.');
+      }
+    }
+
+    const jha = await prisma.jobHazardAnalysis.create({
+      data: {
+        jobId: job.id,
+        taskDescription,
+        hazardsIdentified,
+        controlMeasures,
+        reviewDate,
+        preparedByWorkerId,
+      },
+    });
+
+    return NextResponse.json({ id: jha.id }, { status: 201 });
+  } catch (err) {
+    return apiError(err);
   }
-
-  const jha = await prisma.jobHazardAnalysis.create({
-    data: {
-      jobId: job.id,
-      taskDescription,
-      hazardsIdentified,
-      controlMeasures,
-      reviewDate,
-      preparedByWorkerId: body.preparedByWorkerId || null,
-    },
-  });
-
-  return NextResponse.json({ id: jha.id }, { status: 201 });
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { apiError } from '@/lib/api';
+import { NotFoundError } from '@/lib/validate';
 
 /**
  * Removes a mis-logged toolbox talk. A hard delete, the same treatment
@@ -11,12 +13,16 @@ import { getDb } from '@/lib/db';
  * correction path here rather than an edit-in-place.
  */
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string; meetingId: string } }) {
-  const prisma = getDb();
-  const meeting = await prisma.safetyMeeting.findUnique({ where: { id: params.meetingId } });
-  if (!meeting || meeting.jobId !== params.id) {
-    return NextResponse.json({ error: 'No matching toolbox talk for this job.' }, { status: 404 });
-  }
+  try {
+    const prisma = getDb();
+    const meeting = await prisma.safetyMeeting.findUnique({ where: { id: params.meetingId } });
+    if (!meeting || meeting.jobId !== params.id) {
+      throw new NotFoundError('No matching toolbox talk for this job.');
+    }
 
-  await prisma.safetyMeeting.delete({ where: { id: params.meetingId } });
-  return NextResponse.json({ ok: true });
+    await prisma.safetyMeeting.delete({ where: { id: params.meetingId } });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return apiError(err);
+  }
 }

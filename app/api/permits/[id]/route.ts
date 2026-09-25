@@ -2,95 +2,76 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { PermitStatus } from '@/lib/enums';
 import { recordAudit } from '@/lib/audit';
-
-interface UpdatePermitBody {
-  status: string;
-  permitNumber?: string;
-  issuedDate?: string;
-  expiryDate?: string;
-}
-
-const VALID_STATUSES = new Set<string>(Object.values(PermitStatus));
+import { apiError } from '@/lib/api';
+import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, NotFoundError, ValidationError } from '@/lib/validate';
 
 /**
- * Advances a permit past its initial filing — the workflow gap the app
- * previously had no route for at all: app/api/jobs/[id]/permits/route.ts
- * only ever creates a permit starting at APPLIED with no permitNumber,
- * issuedDate, or expiryDate, and nothing let a PM record that a jurisdiction
- * actually issued it, assign the permit number once known, set its expiry,
- * or file a renewal (a new expiryDate on the same permit — see the comment
- * below on why a renewal isn't a new row). Without this route, the
- * "expired permit blocks the job" gate the README describes could compute
- * from seed data but could never actually be exercised from the UI: no
- * permit could ever reach ISSUED with a real expiryDate through the app
- * itself.
+ * Advances a permit past its initial filing: mark it issued, record the
+ * permit number once known, set its expiry, or file a renewal (a new
+ * expiryDate on the same permit — it's the same permit continuing, and this
+ * keeps its inspection history attached to the one row a PM tracks).
+ * app/api/jobs/[id]/permits/route.ts only ever creates a permit at APPLIED,
+ * so without this route the "expired permit blocks the job" gate could
+ * never be exercised from the UI.
+ *
+ * A PATCH touches only the fields the client sent. A key sent as null or
+ * blank clears that field; a key left out leaves it as it was.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const permit = await prisma.permit.findUnique({ where: { id: params.id } });
-  if (!permit) {
-    return NextResponse.json({ error: 'No permit matches that id.' }, { status: 404 });
-  }
-
-  let body: UpdatePermitBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
-
-  if (!body.status || !VALID_STATUSES.has(body.status)) {
-    return NextResponse.json({ error: 'Select a valid permit status.' }, { status: 400 });
-  }
-
-  const parseDate = (value: string | undefined) => {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? undefined : date;
-  };
-  const issuedDate = parseDate(body.issuedDate);
-  const expiryDate = parseDate(body.expiryDate);
-  if (issuedDate === undefined || expiryDate === undefined) {
-    return NextResponse.json({ error: 'One of the dates entered is not valid.' }, { status: 400 });
-  }
-
-  // EXPIRED is meant to be derived from expiryDate (see isPastCalendarDate
-  // in lib/readiness-service.ts) rather than hand-set — a status of EXPIRED
-  // with no expiryDate to back it up would be a status readiness can't
-  // actually reconstruct from data the next time it's computed. ISSUED and
-  // FINALED need no such backing fact, so they're free to set directly.
-  if (body.status === PermitStatus.EXPIRED && !expiryDate) {
-    return NextResponse.json(
-      { error: 'Set an expiry date in the past instead of marking a permit expired directly.' },
-      { status: 400 },
-    );
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.permit.update({
-      where: { id: permit.id },
-      data: {
-        status: body.status,
-        permitNumber: body.permitNumber?.trim() || null,
-        issuedDate,
-        expiryDate,
-      },
-    });
-    // Permit status is exactly the kind of fact that shows up in a
-    // deposition years after a job closes — "who marked this ISSUED, and
-    // when" — so this is one of the handful of mutations wired to
-    // lib/audit.ts. See that file and AuditLogEntry's own comment for what
-    // this does and doesn't guarantee.
-    if (permit.status !== body.status) {
-      await recordAudit(tx, {
-        entityType: 'Permit',
-        entityId: permit.id,
-        action: 'STATUS_CHANGE',
-        summary: `Status changed from ${permit.status} to ${body.status}.`,
-      });
+    const prisma = getDb();
+    const permit = await prisma.permit.findUnique({ where: { id: params.id } });
+    if (!permit) {
+      throw new NotFoundError('No permit matches that id.');
     }
-    return result;
-  });
 
-  return NextResponse.json({ id: updated.id });
+    const body = await parseJsonBody(request);
+    const data: {
+      status?: string;
+      permitNumber?: string | null;
+      issuedDate?: Date | null;
+      expiryDate?: Date | null;
+    } = {};
+
+    if (has(body, 'status')) data.status = requiredEnum(body, 'status', PermitStatus, 'Select a valid permit status.');
+    if (has(body, 'permitNumber')) data.permitNumber = optionalString(body, 'permitNumber');
+    if (has(body, 'issuedDate')) data.issuedDate = optionalDate(body, 'issuedDate', 'One of the dates entered is not valid.');
+    if (has(body, 'expiryDate')) data.expiryDate = optionalDate(body, 'expiryDate', 'One of the dates entered is not valid.');
+
+    // EXPIRED is meant to be derived from expiryDate (see isPastCalendarDate
+    // in lib/domain/readiness.ts) rather than hand-set — a status of EXPIRED
+    // with no expiryDate to back it up is one readiness can't reconstruct
+    // from data the next time it's computed. ISSUED and FINALED need no
+    // such backing fact, so they're free to set directly.
+    const effectiveStatus = data.status ?? permit.status;
+    const effectiveExpiry = has(body, 'expiryDate') ? data.expiryDate : permit.expiryDate;
+    if (effectiveStatus === PermitStatus.EXPIRED && !effectiveExpiry) {
+      throw new ValidationError('Set an expiry date in the past instead of marking a permit expired directly.');
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ id: permit.id });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.permit.update({ where: { id: permit.id }, data });
+      // Permit status is exactly the kind of fact that shows up in a
+      // deposition years after a job closes — "who marked this ISSUED, and
+      // when" — so this is one of the handful of mutations wired to
+      // lib/audit.ts.
+      if (data.status !== undefined && permit.status !== data.status) {
+        await recordAudit(tx, {
+          entityType: 'Permit',
+          entityId: permit.id,
+          action: 'STATUS_CHANGE',
+          summary: `Status changed from ${permit.status} to ${data.status}.`,
+        });
+      }
+      return result;
+    });
+
+    return NextResponse.json({ id: updated.id });
+  } catch (err) {
+    return apiError(err);
+  }
 }

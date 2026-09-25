@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-
-interface CreateSubcontractorBody {
-  businessName: string;
-  trade: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString } from '@/lib/validate';
 
 /**
  * Creates a new subcontractor firm. Deliberately minimal — just the two
@@ -15,26 +12,19 @@ interface CreateSubcontractorBody {
  * entity here follows.
  */
 export async function POST(request: NextRequest) {
-  const prisma = getDb();
-  let body: CreateSubcontractorBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const body = await parseJsonBody(request);
 
-  const businessName = body.businessName?.trim();
-  if (!businessName) {
-    return NextResponse.json({ error: 'Enter a business name.' }, { status: 400 });
-  }
-  const trade = body.trade?.trim();
-  if (!trade) {
-    return NextResponse.json({ error: 'Enter a trade.' }, { status: 400 });
-  }
+    const businessName = requiredString(body, 'businessName', 'Enter a business name.');
+    const trade = requiredString(body, 'trade', 'Enter a trade.');
 
-  const subcontractor = await prisma.subcontractor.create({
-    data: { businessName, trade },
-  });
+    const subcontractor = await prisma.subcontractor.create({
+      data: { businessName, trade },
+    });
 
-  return NextResponse.json({ id: subcontractor.id }, { status: 201 });
+    return NextResponse.json({ id: subcontractor.id }, { status: 201 });
+  } catch (err) {
+    return apiError(err);
+  }
 }

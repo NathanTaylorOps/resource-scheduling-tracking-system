@@ -2,55 +2,49 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { IncidentStatus } from '@/lib/enums';
 import { recordAudit } from '@/lib/audit';
-
-interface UpdateIncidentBody {
-  status: string;
-  correctionAction?: string;
-}
-
-const VALID_STATUSES = new Set<string>(Object.values(IncidentStatus));
+import { apiError } from '@/lib/api';
+import { parseJsonBody, has, optionalString, requiredEnum, NotFoundError } from '@/lib/validate';
 
 /**
  * Closes out (or reopens) a safety incident. Same audit rationale as
  * permit/inspection status: OSHA recordkeeping and any later claim both
  * turn on exactly this — who closed it, and when.
+ *
+ * A PATCH touches only the fields the client sent.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const incident = await prisma.safetyIncident.findUnique({ where: { id: params.id } });
-  if (!incident) {
-    return NextResponse.json({ error: 'No safety incident matches that id.' }, { status: 404 });
-  }
-
-  let body: UpdateIncidentBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
-
-  if (!body.status || !VALID_STATUSES.has(body.status)) {
-    return NextResponse.json({ error: 'Select a valid status.' }, { status: 400 });
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.safetyIncident.update({
-      where: { id: incident.id },
-      data: {
-        status: body.status,
-        correctionAction: body.correctionAction?.trim() || incident.correctionAction,
-      },
-    });
-    if (incident.status !== body.status) {
-      await recordAudit(tx, {
-        entityType: 'SafetyIncident',
-        entityId: incident.id,
-        action: 'STATUS_CHANGE',
-        summary: `${incident.incidentType} incident status changed from ${incident.status} to ${body.status}.`,
-      });
+    const prisma = getDb();
+    const incident = await prisma.safetyIncident.findUnique({ where: { id: params.id } });
+    if (!incident) {
+      throw new NotFoundError('No safety incident matches that id.');
     }
-    return result;
-  });
 
-  return NextResponse.json({ id: updated.id });
+    const body = await parseJsonBody(request);
+    const data: { status?: string; correctionAction?: string | null } = {};
+
+    if (has(body, 'status')) data.status = requiredEnum(body, 'status', IncidentStatus, 'Select a valid status.');
+    if (has(body, 'correctionAction')) data.correctionAction = optionalString(body, 'correctionAction');
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ id: incident.id });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.safetyIncident.update({ where: { id: incident.id }, data });
+      if (data.status !== undefined && incident.status !== data.status) {
+        await recordAudit(tx, {
+          entityType: 'SafetyIncident',
+          entityId: incident.id,
+          action: 'STATUS_CHANGE',
+          summary: `${incident.incidentType} incident status changed from ${incident.status} to ${data.status}.`,
+        });
+      }
+      return result;
+    });
+
+    return NextResponse.json({ id: updated.id });
+  } catch (err) {
+    return apiError(err);
+  }
 }

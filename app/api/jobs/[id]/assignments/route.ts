@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
 import { canAssignWorker, parseCertTypesList } from '@/lib/domain/certifications';
-
-interface CreateAssignmentBody {
-  workerId: string;
-  roleOnJob: string;
-  start: string;
-  end: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, requiredDate, ValidationError, NotFoundError, ConflictError } from '@/lib/validate';
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -34,79 +29,63 @@ function isUniqueConstraintError(error: unknown): boolean {
  * sometimes needs to book over a conflict on purpose and sort it out.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const job = await prisma.job.findUnique({ where: { id: params.id } });
-  if (!job) {
-    return NextResponse.json({ error: 'No job matches that id.' }, { status: 404 });
-  }
-
-  let body: CreateAssignmentBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
-
-  if (!body.workerId) {
-    return NextResponse.json({ error: 'Select a worker.' }, { status: 400 });
-  }
-  const roleOnJob = body.roleOnJob?.trim();
-  if (!roleOnJob) {
-    return NextResponse.json({ error: 'Enter the role this assignment is for.' }, { status: 400 });
-  }
-  const start = new Date(body.start);
-  const end = new Date(body.end);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return NextResponse.json({ error: 'Enter valid start and end dates.' }, { status: 400 });
-  }
-  if (end.getTime() <= start.getTime()) {
-    return NextResponse.json({ error: 'End date must be after the start date.' }, { status: 400 });
-  }
-
-  const worker = await prisma.worker.findUnique({
-    where: { id: body.workerId },
-    include: { certifications: true },
-  });
-  if (!worker) {
-    return NextResponse.json({ error: 'No worker matches that selection.' }, { status: 400 });
-  }
-
-  // findFirst is safe here because @@unique([jobId, roleOrTrade]) on
-  // JobRoleRequirement (schema.prisma) guarantees at most one row can match —
-  // this can never silently pick between two requirements for the same role.
-  const requirement = await prisma.jobRoleRequirement.findFirst({
-    where: { jobId: job.id, roleOrTrade: roleOnJob },
-  });
-  const requiredCertTypes = parseCertTypesList(requirement?.requiredCertTypes);
-
-  if (requiredCertTypes.length > 0) {
-    const eligibility = canAssignWorker(requiredCertTypes, worker.certifications, new Date());
-    if (!eligibility.eligible) {
-      return NextResponse.json(
-        {
-          error: `${worker.name} is missing or has an expired required certification: ${eligibility.missingOrExpired.join(', ')}.`,
-        },
-        { status: 409 },
-      );
+    const prisma = getDb();
+    const job = await prisma.job.findUnique({ where: { id: params.id } });
+    if (!job) {
+      throw new NotFoundError('No job matches that id.');
     }
-  }
 
-  // No findFirst pre-check — @@unique([workerId, jobId, roleOnJob, start,
-  // end]) on Assignment only rejects an EXACT duplicate (a double-click, a
-  // retried submit), never an overlapping-but-different assignment, which
-  // stays intentionally allowed (see this function's own doc comment).
-  try {
-    const assignment = await prisma.assignment.create({
-      data: { workerId: worker.id, jobId: job.id, roleOnJob, start, end },
+    const body = await parseJsonBody(request);
+    const workerId = requiredString(body, 'workerId', 'Select a worker.');
+    const roleOnJob = requiredString(body, 'roleOnJob', 'Enter the role this assignment is for.');
+    const start = requiredDate(body, 'start', 'Enter valid start and end dates.');
+    const end = requiredDate(body, 'end', 'Enter valid start and end dates.');
+    if (end.getTime() <= start.getTime()) {
+      throw new ValidationError('End date must be after the start date.');
+    }
+
+    const worker = await prisma.worker.findUnique({
+      where: { id: workerId },
+      include: { certifications: true },
     });
-    return NextResponse.json({ id: assignment.id }, { status: 201 });
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      return NextResponse.json(
-        { error: `${worker.name} is already assigned to this exact role and date range on this job.` },
-        { status: 409 },
-      );
+    if (!worker) {
+      throw new ValidationError('No worker matches that selection.');
     }
-    throw error;
+
+    // findFirst is safe here because @@unique([jobId, roleOrTrade]) on
+    // JobRoleRequirement (schema.prisma) guarantees at most one row can match —
+    // this can never silently pick between two requirements for the same role.
+    const requirement = await prisma.jobRoleRequirement.findFirst({
+      where: { jobId: job.id, roleOrTrade: roleOnJob },
+    });
+    const requiredCertTypes = parseCertTypesList(requirement?.requiredCertTypes);
+
+    if (requiredCertTypes.length > 0) {
+      const eligibility = canAssignWorker(requiredCertTypes, worker.certifications, new Date());
+      if (!eligibility.eligible) {
+        throw new ConflictError(
+          `${worker.name} is missing or has an expired required certification: ${eligibility.missingOrExpired.join(', ')}.`,
+        );
+      }
+    }
+
+    // No findFirst pre-check — @@unique([workerId, jobId, roleOnJob, start,
+    // end]) on Assignment only rejects an EXACT duplicate (a double-click, a
+    // retried submit), never an overlapping-but-different assignment, which
+    // stays intentionally allowed (see this function's own doc comment).
+    try {
+      const assignment = await prisma.assignment.create({
+        data: { workerId: worker.id, jobId: job.id, roleOnJob, start, end },
+      });
+      return NextResponse.json({ id: assignment.id }, { status: 201 });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictError(`${worker.name} is already assigned to this exact role and date range on this job.`);
+      }
+      throw error;
+    }
+  } catch (err) {
+    return apiError(err);
   }
 }

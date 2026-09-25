@@ -2,14 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
 import { EquipmentStatus } from '@/lib/enums';
-
-interface CreateEquipmentBody {
-  name: string;
-  category: string;
-  status?: string;
-  acquisitionDate: string;
-  inServiceDate: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, requiredDate, optionalEnum, ValidationError } from '@/lib/validate';
 
 const QR_PREFIX = 'CW-EQ-';
 const MAX_QR_RETRIES = 1;
@@ -39,50 +33,38 @@ function isUniqueConstraintError(error: unknown): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const prisma = getDb();
-  let body: CreateEquipmentBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const body = await parseJsonBody(request);
 
-  const name = body.name?.trim();
-  if (!name) {
-    return NextResponse.json({ error: 'Enter an asset name.' }, { status: 400 });
-  }
-  const category = body.category?.trim();
-  if (!category) {
-    return NextResponse.json({ error: 'Enter a category.' }, { status: 400 });
-  }
-  const acquisitionDate = new Date(body.acquisitionDate);
-  const inServiceDate = new Date(body.inServiceDate);
-  if (Number.isNaN(acquisitionDate.getTime()) || Number.isNaN(inServiceDate.getTime())) {
-    return NextResponse.json({ error: 'Enter valid acquisition and in-service dates.' }, { status: 400 });
-  }
-  if (inServiceDate.getTime() < acquisitionDate.getTime()) {
-    return NextResponse.json({ error: "In-service date can't be before the acquisition date." }, { status: 400 });
-  }
-  const status = body.status && Object.values(EquipmentStatus).includes(body.status as EquipmentStatus) ? body.status : EquipmentStatus.ACTIVE;
+    const name = requiredString(body, 'name', 'Enter an asset name.');
+    const category = requiredString(body, 'category', 'Enter a category.');
+    const acquisitionDate = requiredDate(body, 'acquisitionDate', 'Enter valid acquisition and in-service dates.');
+    const inServiceDate = requiredDate(body, 'inServiceDate', 'Enter valid acquisition and in-service dates.');
+    if (inServiceDate.getTime() < acquisitionDate.getTime()) {
+      throw new ValidationError("In-service date can't be before the acquisition date.");
+    }
+    const status = optionalEnum(body, 'status', EquipmentStatus, EquipmentStatus.ACTIVE, 'Select a valid equipment status.');
 
-  // Computing the next tag and creating the record are two separate steps —
-  // low odds of two requests racing between them in a single-user local
-  // tool, but cheap to make safe rather than assumed away: on the unique-
-  // constraint failure that race would cause, recompute the max (which by
-  // then includes whichever request won) and try once more, rather than
-  // surfacing a raw 500 for what's really a retryable scheduling accident.
-  for (let attempt = 0; attempt <= MAX_QR_RETRIES; attempt++) {
-    const qrCode = await nextQrCode();
-    try {
-      const equipment = await prisma.equipment.create({
-        data: { name, category, qrCode, status, acquisitionDate, inServiceDate },
-      });
-      return NextResponse.json({ id: equipment.id, qrCode: equipment.qrCode }, { status: 201 });
-    } catch (error) {
-      if (!isUniqueConstraintError(error) || attempt === MAX_QR_RETRIES) {
-        throw error;
+    // Computing the next tag and creating the record are two separate steps —
+    // low odds of two requests racing between them, but cheap to make safe:
+    // on the unique-constraint failure that race would cause, recompute the
+    // max (which by then includes whichever request won) and try once more.
+    for (let attempt = 0; attempt <= MAX_QR_RETRIES; attempt++) {
+      const qrCode = await nextQrCode();
+      try {
+        const equipment = await prisma.equipment.create({
+          data: { name, category, qrCode, status, acquisitionDate, inServiceDate },
+        });
+        return NextResponse.json({ id: equipment.id, qrCode: equipment.qrCode }, { status: 201 });
+      } catch (error) {
+        if (!isUniqueConstraintError(error) || attempt === MAX_QR_RETRIES) {
+          throw error;
+        }
       }
     }
+    throw new Error('Unreachable: the retry loop above always returns or re-throws.');
+  } catch (err) {
+    return apiError(err);
   }
-  throw new Error('Unreachable: the retry loop above always returns or re-throws.');
 }

@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { EmploymentType } from '@/lib/enums';
-
-interface CreateWorkerBody {
-  name: string;
-  trade: string;
-  employmentType?: string;
-  hireDate: string;
-  phone?: string;
-  email?: string;
-  subcontractorId?: string;
-}
+import { apiError } from '@/lib/api';
+import { parseJsonBody, requiredString, optionalString, requiredDate, optionalEnum, ValidationError } from '@/lib/validate';
 
 /**
  * Creates a new worker. subcontractorId is required when employmentType is
@@ -23,54 +15,42 @@ interface CreateWorkerBody {
  * Worker/Subcontractor relation's own comment in schema.prisma).
  */
 export async function POST(request: NextRequest) {
-  const prisma = getDb();
-  let body: CreateWorkerBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const body = await parseJsonBody(request);
 
-  const name = body.name?.trim();
-  if (!name) {
-    return NextResponse.json({ error: 'Enter a name.' }, { status: 400 });
-  }
-  const trade = body.trade?.trim();
-  if (!trade) {
-    return NextResponse.json({ error: 'Enter a trade.' }, { status: 400 });
-  }
-  const hireDate = new Date(body.hireDate);
-  if (Number.isNaN(hireDate.getTime())) {
-    return NextResponse.json({ error: 'Enter a valid hire date.' }, { status: 400 });
-  }
-  const employmentType =
-    body.employmentType && Object.values(EmploymentType).includes(body.employmentType as EmploymentType)
-      ? body.employmentType
-      : EmploymentType.DIRECT_EMPLOYEE;
+    const name = requiredString(body, 'name', 'Enter a name.');
+    const trade = requiredString(body, 'trade', 'Enter a trade.');
+    const hireDate = requiredDate(body, 'hireDate', 'Enter a valid hire date.');
+    const employmentType = optionalEnum(body, 'employmentType', EmploymentType, EmploymentType.DIRECT_EMPLOYEE, 'Select a valid employment type.');
 
-  let subcontractorId: string | null = null;
-  if (employmentType === EmploymentType.SUBCONTRACTOR) {
-    if (!body.subcontractorId) {
-      return NextResponse.json({ error: 'Select the subcontractor firm this worker belongs to.' }, { status: 400 });
+    let subcontractorId: string | null = null;
+    if (employmentType === EmploymentType.SUBCONTRACTOR) {
+      const requestedId = optionalString(body, 'subcontractorId');
+      if (!requestedId) {
+        throw new ValidationError('Select the subcontractor firm this worker belongs to.');
+      }
+      const subcontractor = await prisma.subcontractor.findUnique({ where: { id: requestedId } });
+      if (!subcontractor) {
+        throw new ValidationError('No subcontractor firm matches that selection.');
+      }
+      subcontractorId = subcontractor.id;
     }
-    const subcontractor = await prisma.subcontractor.findUnique({ where: { id: body.subcontractorId } });
-    if (!subcontractor) {
-      return NextResponse.json({ error: 'No subcontractor firm matches that selection.' }, { status: 400 });
-    }
-    subcontractorId = subcontractor.id;
+
+    const worker = await prisma.worker.create({
+      data: {
+        name,
+        trade,
+        employmentType,
+        hireDate,
+        phone: optionalString(body, 'phone'),
+        email: optionalString(body, 'email'),
+        subcontractorId,
+      },
+    });
+
+    return NextResponse.json({ id: worker.id }, { status: 201 });
+  } catch (err) {
+    return apiError(err);
   }
-
-  const worker = await prisma.worker.create({
-    data: {
-      name,
-      trade,
-      employmentType,
-      hireDate,
-      phone: body.phone?.trim() || null,
-      email: body.email?.trim() || null,
-      subcontractorId,
-    },
-  });
-
-  return NextResponse.json({ id: worker.id }, { status: 201 });
 }

@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { CoverageType } from '@/lib/enums';
-
-interface CreateCoiBody {
-  coverageType: string;
-  carrier: string;
-  policyNumber: string;
-  effectiveDate: string;
-  expiryDate: string;
-  coverageLimit?: number;
-  additionalInsured?: boolean;
-}
-
-const VALID_COVERAGE_TYPES = new Set<string>(Object.values(CoverageType));
+import { apiError } from '@/lib/api';
+import {
+  parseJsonBody,
+  requiredString,
+  requiredDate,
+  requiredEnum,
+  optionalNumber,
+  optionalBoolean,
+  NotFoundError,
+  ValidationError,
+} from '@/lib/validate';
 
 /**
  * Adds a certificate-of-insurance record. Add-only, no edit or delete: a
@@ -23,48 +22,40 @@ const VALID_COVERAGE_TYPES = new Set<string>(Object.values(CoverageType));
  * getCertificationStatus reads as current once its expiryDate passes.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const subcontractor = await prisma.subcontractor.findUnique({ where: { id: params.id } });
-  if (!subcontractor) {
-    return NextResponse.json({ error: 'No subcontractor matches that id.' }, { status: 404 });
-  }
-
-  let body: CreateCoiBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
+    const prisma = getDb();
+    const subcontractor = await prisma.subcontractor.findUnique({ where: { id: params.id } });
+    if (!subcontractor) {
+      throw new NotFoundError('No subcontractor matches that id.');
+    }
 
-  if (!body.coverageType || !VALID_COVERAGE_TYPES.has(body.coverageType)) {
-    return NextResponse.json({ error: 'Select a coverage type.' }, { status: 400 });
-  }
-  const carrier = body.carrier?.trim();
-  const policyNumber = body.policyNumber?.trim();
-  if (!carrier || !policyNumber) {
-    return NextResponse.json({ error: 'Enter the carrier and policy number.' }, { status: 400 });
-  }
-  const effectiveDate = new Date(body.effectiveDate);
-  const expiryDate = new Date(body.expiryDate);
-  if (Number.isNaN(effectiveDate.getTime()) || Number.isNaN(expiryDate.getTime())) {
-    return NextResponse.json({ error: 'Enter valid effective and expiry dates.' }, { status: 400 });
-  }
-  if (expiryDate.getTime() <= effectiveDate.getTime()) {
-    return NextResponse.json({ error: 'Expiry date must be after the effective date.' }, { status: 400 });
-  }
+    const body = await parseJsonBody(request);
+    const coverageType = requiredEnum(body, 'coverageType', CoverageType, 'Select a coverage type.');
+    const carrier = requiredString(body, 'carrier', 'Enter the carrier and policy number.');
+    const policyNumber = requiredString(body, 'policyNumber', 'Enter the carrier and policy number.');
+    const effectiveDate = requiredDate(body, 'effectiveDate', 'Enter valid effective and expiry dates.');
+    const expiryDate = requiredDate(body, 'expiryDate', 'Enter valid effective and expiry dates.');
+    if (expiryDate.getTime() <= effectiveDate.getTime()) {
+      throw new ValidationError('Expiry date must be after the effective date.');
+    }
+    const coverageLimit = optionalNumber(body, 'coverageLimit', { min: 0 }, 'Coverage limit must be a non-negative number.');
+    const additionalInsured = optionalBoolean(body, 'additionalInsured');
 
-  const coi = await prisma.subcontractorCOI.create({
-    data: {
-      subcontractorId: subcontractor.id,
-      coverageType: body.coverageType,
-      carrier,
-      policyNumber,
-      effectiveDate,
-      expiryDate,
-      coverageLimit: typeof body.coverageLimit === 'number' ? body.coverageLimit : null,
-      additionalInsured: Boolean(body.additionalInsured),
-    },
-  });
+    const coi = await prisma.subcontractorCOI.create({
+      data: {
+        subcontractorId: subcontractor.id,
+        coverageType,
+        carrier,
+        policyNumber,
+        effectiveDate,
+        expiryDate,
+        coverageLimit,
+        additionalInsured,
+      },
+    });
 
-  return NextResponse.json({ id: coi.id }, { status: 201 });
+    return NextResponse.json({ id: coi.id }, { status: 201 });
+  } catch (err) {
+    return apiError(err);
+  }
 }

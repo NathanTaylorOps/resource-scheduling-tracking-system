@@ -2,92 +2,85 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InspectionStatus, ReinspectionChannel } from '@/lib/enums';
 import { recordAudit } from '@/lib/audit';
-
-interface UpdateInspectionBody {
-  status: string;
-  scheduledDate?: string;
-  completedDate?: string;
-  inspectorNotes?: string;
-  correctionNotes?: string;
-  correctionResponsible?: string;
-  reinspectionChannel?: string;
-  reinspectionScheduledDate?: string;
-}
-
-const VALID_STATUSES = new Set<string>(Object.values(InspectionStatus));
-const VALID_CHANNELS = new Set<string>(Object.values(ReinspectionChannel));
+import { apiError } from '@/lib/api';
+import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, optionalEnum, NotFoundError } from '@/lib/validate';
 
 /**
- * Records an inspection's actual outcome — this is the write side of the
- * failed-inspection correction detail the job-detail page already displays
- * read-only (correction notes, who's responsible, how re-inspection gets
- * scheduled). Kept as one row updated in place, the same simplification the
- * schema comment on Inspection already documents, not a full visit-by-visit
- * history.
+ * Records an inspection's actual outcome — the write side of the
+ * failed-inspection correction detail the job-detail page displays
+ * (correction notes, who's responsible, how re-inspection gets scheduled).
+ * One row updated in place, the same simplification the schema comment on
+ * Inspection documents, not a full visit-by-visit history.
+ *
+ * A PATCH touches only the fields the client sent, with one deliberate
+ * exception: correction detail only means something on a FAILED
+ * inspection, so whenever the resulting status isn't FAILED those four
+ * fields are cleared, keeping a stale correction note from lingering on an
+ * inspection that later passed.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const inspection = await prisma.inspection.findUnique({ where: { id: params.id } });
-  if (!inspection) {
-    return NextResponse.json({ error: 'No inspection matches that id.' }, { status: 404 });
-  }
-
-  let body: UpdateInspectionBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
-  }
-
-  if (!body.status || !VALID_STATUSES.has(body.status)) {
-    return NextResponse.json({ error: 'Select a valid status.' }, { status: 400 });
-  }
-  if (body.reinspectionChannel && !VALID_CHANNELS.has(body.reinspectionChannel)) {
-    return NextResponse.json({ error: 'Select a valid re-inspection channel.' }, { status: 400 });
-  }
-
-  const parseDate = (value: string | undefined) => {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? undefined : date;
-  };
-  const scheduledDate = parseDate(body.scheduledDate);
-  const completedDate = parseDate(body.completedDate);
-  const reinspectionScheduledDate = parseDate(body.reinspectionScheduledDate);
-  if (scheduledDate === undefined || completedDate === undefined || reinspectionScheduledDate === undefined) {
-    return NextResponse.json({ error: 'One of the dates entered is not valid.' }, { status: 400 });
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.inspection.update({
-      where: { id: inspection.id },
-      data: {
-        status: body.status,
-        scheduledDate,
-        completedDate,
-        inspectorNotes: body.inspectorNotes?.trim() || null,
-        // Correction detail only means something on a failed inspection —
-        // clearing it here if the status has moved off FAILED keeps a stale
-        // correction note from lingering on an inspection that later passed.
-        correctionNotes: body.status === InspectionStatus.FAILED ? body.correctionNotes?.trim() || null : null,
-        correctionResponsible: body.status === InspectionStatus.FAILED ? body.correctionResponsible?.trim() || null : null,
-        reinspectionChannel: body.status === InspectionStatus.FAILED ? body.reinspectionChannel || null : null,
-        reinspectionScheduledDate: body.status === InspectionStatus.FAILED ? reinspectionScheduledDate : null,
-      },
-    });
-    // Same reasoning as the permit-status audit entry — an inspection
-    // outcome (especially a FAILED one) is exactly the kind of fact a
-    // claim or dispute years later turns on.
-    if (inspection.status !== body.status) {
-      await recordAudit(tx, {
-        entityType: 'Inspection',
-        entityId: inspection.id,
-        action: 'STATUS_CHANGE',
-        summary: `${inspection.inspectionType} inspection status changed from ${inspection.status} to ${body.status}.`,
-      });
+    const prisma = getDb();
+    const inspection = await prisma.inspection.findUnique({ where: { id: params.id } });
+    if (!inspection) {
+      throw new NotFoundError('No inspection matches that id.');
     }
-    return result;
-  });
 
-  return NextResponse.json({ id: updated.id });
+    const body = await parseJsonBody(request);
+    const data: {
+      status?: string;
+      scheduledDate?: Date | null;
+      completedDate?: Date | null;
+      inspectorNotes?: string | null;
+      correctionNotes?: string | null;
+      correctionResponsible?: string | null;
+      reinspectionChannel?: string | null;
+      reinspectionScheduledDate?: Date | null;
+    } = {};
+
+    if (has(body, 'status')) data.status = requiredEnum(body, 'status', InspectionStatus, 'Select a valid status.');
+    if (has(body, 'scheduledDate')) data.scheduledDate = optionalDate(body, 'scheduledDate', 'One of the dates entered is not valid.');
+    if (has(body, 'completedDate')) data.completedDate = optionalDate(body, 'completedDate', 'One of the dates entered is not valid.');
+    if (has(body, 'inspectorNotes')) data.inspectorNotes = optionalString(body, 'inspectorNotes');
+
+    const effectiveStatus = data.status ?? inspection.status;
+    if (effectiveStatus === InspectionStatus.FAILED) {
+      if (has(body, 'correctionNotes')) data.correctionNotes = optionalString(body, 'correctionNotes');
+      if (has(body, 'correctionResponsible')) data.correctionResponsible = optionalString(body, 'correctionResponsible');
+      if (has(body, 'reinspectionChannel')) {
+        const channel = optionalString(body, 'reinspectionChannel');
+        data.reinspectionChannel = channel
+          ? optionalEnum(body, 'reinspectionChannel', ReinspectionChannel, ReinspectionChannel.IN_PERSON, 'Select a valid re-inspection channel.')
+          : null;
+      }
+      if (has(body, 'reinspectionScheduledDate')) {
+        data.reinspectionScheduledDate = optionalDate(body, 'reinspectionScheduledDate', 'One of the dates entered is not valid.');
+      }
+    } else {
+      data.correctionNotes = null;
+      data.correctionResponsible = null;
+      data.reinspectionChannel = null;
+      data.reinspectionScheduledDate = null;
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.inspection.update({ where: { id: inspection.id }, data });
+      // Same reasoning as the permit-status audit entry — an inspection
+      // outcome (especially a FAILED one) is exactly the kind of fact a
+      // claim or dispute years later turns on.
+      if (data.status !== undefined && inspection.status !== data.status) {
+        await recordAudit(tx, {
+          entityType: 'Inspection',
+          entityId: inspection.id,
+          action: 'STATUS_CHANGE',
+          summary: `${inspection.inspectionType} inspection status changed from ${inspection.status} to ${data.status}.`,
+        });
+      }
+      return result;
+    });
+
+    return NextResponse.json({ id: updated.id });
+  } catch (err) {
+    return apiError(err);
+  }
 }
