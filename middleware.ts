@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { SESSION_COOKIE } from '@/lib/session';
+import { SESSION_COOKIE, isValidSessionId } from '@/lib/session';
 
 /**
  * Assigns every visitor a private session cookie on their first request, so
- * lib/db.ts can hand them their own isolated copy of the demo data instead
- * of the single shared database this app uses when run locally. See the
- * "RSTS: per-visitor hosting plan" doc for why — in short: hosted on one
- * server, every visitor would otherwise land on the same database and could
- * see, or overwrite, whatever the last visitor did.
+ * lib/db.ts can hand them their own isolated copy of the demo data. Hosted
+ * on one server, every visitor would otherwise land on the same database
+ * and could see, or overwrite, whatever the last visitor did.
+ *
+ * A cookie that exists but isn't a UUID is replaced rather than passed
+ * through: the value ends up in a filesystem path in lib/db.ts, so a
+ * tampered cookie is treated exactly like a missing one.
  *
  * Runs on the Edge runtime (Next's default for middleware), so it only ever
  * touches the cookie, never the database — provisioning that visitor's
@@ -16,7 +18,8 @@ import { SESSION_COOKIE } from '@/lib/session';
  * Node runtime where file access is available.
  */
 export function middleware(request: NextRequest) {
-  if (request.cookies.get(SESSION_COOKIE)) {
+  const existing = request.cookies.get(SESSION_COOKIE)?.value;
+  if (isValidSessionId(existing)) {
     return NextResponse.next();
   }
 

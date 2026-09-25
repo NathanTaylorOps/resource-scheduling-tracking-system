@@ -18,6 +18,7 @@ import { computeReadiness, permitsStatusFrom } from '../readiness';
 import { custodyUpdateFor, CustodyActionRejected } from '../custody';
 import { findEquipmentConflicts } from '../equipment';
 import { evaluateSubcontractorCompliance } from '../subcontractors';
+import { isValidSessionId } from '../../session';
 
 let passed = 0;
 let failed = 0;
@@ -586,6 +587,19 @@ console.log('\ncertifications.ts — summarizeCertificationStatuses shared bucke
   );
   assertEqual('all valid nets to zero of both', summarizeCertificationStatuses(['valid', 'valid']), { expiredCount: 0, reviewCount: 0 });
   assertEqual('an empty list nets to zero of both', summarizeCertificationStatuses([]), { expiredCount: 0, reviewCount: 0 });
+}
+
+console.log('\nsession.ts — session ids must be UUIDs before they touch a file path');
+{
+  assertEqual('a crypto.randomUUID()-shaped id is accepted', isValidSessionId('3f2504e0-4f89-41d3-9a0c-0305e82c3301'), true);
+  assertEqual('uppercase hex is accepted too', isValidSessionId('3F2504E0-4F89-41D3-9A0C-0305E82C3301'), true);
+  assertEqual('a path-traversal payload is rejected', isValidSessionId('../../opt/render/project/src/prisma/template'), false);
+  assertEqual('a UUID with a path prefix is rejected', isValidSessionId('../3f2504e0-4f89-41d3-9a0c-0305e82c3301'), false);
+  assertEqual('a UUID with a trailing segment is rejected', isValidSessionId('3f2504e0-4f89-41d3-9a0c-0305e82c3301/x'), false);
+  assertEqual('an empty string is rejected', isValidSessionId(''), false);
+  assertEqual('a non-string is rejected', isValidSessionId(undefined), false);
+  assertEqual('a UUID missing a hyphen is rejected', isValidSessionId('3f2504e04f89-41d3-9a0c-0305e82c3301'), false);
+  assertEqual('non-hex characters are rejected', isValidSessionId('3f2504e0-4f89-41d3-9a0c-0305e82c33zz'), false);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
