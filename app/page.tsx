@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { computeJobReadiness } from '@/lib/readiness-service';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
-import type { ComponentStatus, ReadinessResult } from '@/lib/domain/readiness';
+import type { ComponentStatus, ReadinessInputs, ReadinessResult } from '@/lib/domain/readiness';
 import { getCertificationStatus } from '@/lib/domain/certifications';
 import { CircleCheck, TriangleAlert, CircleX, CircleHelp } from 'lucide-react';
 
@@ -27,19 +27,27 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Operations dashboard</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Coastwood Builders — {jobs.length} active or upcoming jobs
+          Coastwood Builders — {jobs.length} active or upcoming {pluralize(jobs.length, 'job', 'jobs')}
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <SummaryTile label="Jobs at risk" value={readinessByJob.filter((r) => r.readiness.overall !== 'ok').length} tone="warning" />
         <SummaryTile
-          label="Certifications due soon or expired"
+          label={pluralize(readinessByJob.filter((r) => r.readiness.overall !== 'ok').length, 'Job at risk', 'Jobs at risk')}
+          value={readinessByJob.filter((r) => r.readiness.overall !== 'ok').length}
+          tone="warning"
+        />
+        <SummaryTile
+          label={pluralize(dueSoonCerts, 'Certification due soon or expired', 'Certifications due soon or expired')}
           value={dueSoonCerts}
           tone="warning"
           href="/expiring"
         />
-        <SummaryTile label="Open work orders" value={openWorkOrders} tone="neutral" />
+        <SummaryTile
+          label={pluralize(openWorkOrders, 'Open work order', 'Open work orders')}
+          value={openWorkOrders}
+          tone="neutral"
+        />
       </div>
 
       <div>
@@ -62,11 +70,15 @@ export default async function DashboardPage() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <ComponentPill label="Crew" status={readiness.crew} reason={readiness.reasons?.crew} />
-                <ComponentPill label="Equip." status={readiness.equipment} reason={readiness.reasons?.equipment} />
-                <ComponentPill label="Compl." status={readiness.compliance} reason={readiness.reasons?.compliance} />
-                <ComponentPill label="Weather" status={readiness.weather} reason={readiness.reasons?.weather} />
-                <ComponentPill label="Permits" status={readiness.permits} reason={readiness.reasons?.permits} />
+                {/* Only the components that are actually flagging something
+                    get a pill here — a fully-ready job doesn't need five
+                    green "OK" tags cluttering its card, but an at-risk job
+                    shows exactly which blocker type(s) to look at without
+                    opening it (crew conflict vs. cert expiry vs. weather,
+                    etc.), which is the whole point of this row. */}
+                {blockerComponents(readiness).map(({ key, label }) => (
+                  <ComponentPill key={key} label={label} status={readiness[key]} reason={readiness.reasons?.[key]} />
+                ))}
                 <div className="sm:ml-3">
                   <StatusBadge status={readiness.overall} label={OVERALL_READINESS_LABEL[readiness.overall]} />
                 </div>
@@ -77,6 +89,14 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
+}
+
+// Picks the singular or plural wording for a summary tile's label based on
+// its own count — "1 Open work order" reads as a typo next to "3 Open work
+// orders" otherwise, and English pluralization can't be inferred from the
+// plural form alone (e.g. "Certification" vs "Certifications").
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
 }
 
 // Explicit per-status maps rather than a ternary chain — a ternary chain
@@ -116,6 +136,26 @@ function ComponentPill({ label, status, reason }: { label: string; status: Compo
 // the badge next to it — rather than, say, always showing the compliance
 // reason even on a job that's actually blocked by permits.
 const SEVERITY_FOR_DISPLAY: Record<ComponentStatus, number> = { ok: 0, unknown: 1, warning: 1, blocked: 2 };
+const COMPONENT_LABEL: Record<keyof ReadinessInputs, string> = {
+  crew: 'Crew',
+  equipment: 'Equip.',
+  compliance: 'Compl.',
+  weather: 'Weather',
+  permits: 'Permits',
+};
+
+// The subset of readiness components actually worth a pill on the list
+// view — i.e. everything but 'ok'. Order matches the severity a reader
+// would want to scan in: crew and equipment issues block today's work
+// outright more often than a compliance or weather heads-up does, so they
+// lead.
+function blockerComponents(
+  readiness: ReadinessResult,
+): Array<{ key: keyof ReadinessInputs; label: string }> {
+  const order: Array<keyof ReadinessInputs> = ['crew', 'equipment', 'compliance', 'weather', 'permits'];
+  return order.filter((key) => readiness[key] !== 'ok').map((key) => ({ key, label: COMPONENT_LABEL[key] }));
+}
+
 function worstReason(readiness: ReadinessResult): string | undefined {
   if (readiness.overall === 'ok' || !readiness.reasons) return undefined;
   const components: Array<keyof typeof readiness.reasons> = ['crew', 'equipment', 'compliance', 'weather', 'permits'];
