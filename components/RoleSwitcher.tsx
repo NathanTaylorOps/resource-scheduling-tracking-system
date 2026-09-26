@@ -47,7 +47,7 @@ export function RoleSwitcher() {
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-1 text-xs text-zinc-500"
+      className="flex flex-wrap items-center gap-1.5 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-1 text-xs text-zinc-500"
       title="Demo-only role switcher: changes what this UI shows/hides for the selected role. Not real authentication — see lib/actor.ts."
     >
       <span className="font-medium uppercase tracking-wide">Viewing as</span>
@@ -55,7 +55,7 @@ export function RoleSwitcher() {
         value={role}
         onChange={(e) => handleChange(e.target.value as ViewingRole)}
         aria-label="Viewing as — demo role switcher"
-        className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-xs text-zinc-700"
+        className="w-full min-w-0 rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-xs text-zinc-700"
       >
         {(Object.keys(ROLE_LABELS) as ViewingRole[]).map((r) => (
           <option key={r} value={r}>{ROLE_LABELS[r]}</option>
