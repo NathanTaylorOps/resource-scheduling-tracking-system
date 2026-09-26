@@ -26,6 +26,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!equipment) {
       throw new NotFoundError('No equipment matches that id.');
     }
+    if (equipment.status === 'RETIRED') {
+      throw new ValidationError('This asset is retired and cannot be reserved.');
+    }
 
     const body = await parseJsonBody(request);
     const jobId = requiredString(body, 'jobId', 'Select a job.');
