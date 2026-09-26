@@ -393,6 +393,16 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
   const hasExpiredPermit = expiredPermits.length > 0;
   const allInspections = permits.flatMap((p) => p.inspections);
   const hasFailedInspection = allInspections.some((i) => i.status === 'FAILED');
+  // An inspection still sitting at "SCHEDULED" after its scheduledDate has
+  // already passed was never resolved one way or the other — nobody recorded
+  // a pass or fail. Left unchecked, it's neither "due soon" (its date is
+  // behind us, not ahead) nor "failed" (no result was ever logged), so it
+  // silently drops out of both checks below and the job reads as
+  // permit-clear despite a blown/missed inspection. Overdue is checked
+  // first and is mutually exclusive with due-soon by construction.
+  const hasOverdueInspection = allInspections.some(
+    (i) => i.status === 'SCHEDULED' && i.scheduledDate !== null && i.scheduledDate.getTime() < now.getTime(),
+  );
   const hasInspectionDueSoon = allInspections.some(
     (i) =>
       i.status === 'SCHEDULED' &&
@@ -400,8 +410,11 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
       i.scheduledDate.getTime() >= now.getTime() &&
       i.scheduledDate.getTime() - now.getTime() <= DUE_SOON_WINDOW_DAYS * DAY_MS,
   );
-  const permitsComponent = permitsStatusFrom({ hasFailedInspection, hasExpiredPermit, hasInspectionDueSoon });
+  const permitsComponent = permitsStatusFrom({ hasFailedInspection, hasExpiredPermit, hasOverdueInspection, hasInspectionDueSoon });
   const failedInspectionPermit = permits.find((p) => p.inspections.some((i) => i.status === 'FAILED'));
+  const overdueInspectionPermit = permits.find((p) =>
+    p.inspections.some((i) => i.status === 'SCHEDULED' && i.scheduledDate !== null && i.scheduledDate.getTime() < now.getTime()),
+  );
   const permitsReason = hasFailedInspection
     ? // failedInspectionPermit is guaranteed non-null here: hasFailedInspection
       // is derived from allInspections, which is itself flatMap'd from this
@@ -410,9 +423,13 @@ export async function computeJobReadiness(jobId: string): Promise<ReadinessResul
       `The ${failedInspectionPermit!.permitType.toLowerCase()} permit has a failed inspection.`
     : hasExpiredPermit
       ? `The ${expiredPermits[0]!.permitType.toLowerCase()} permit has expired.`
-      : hasInspectionDueSoon
-        ? 'An inspection is coming up in the next two weeks.'
-        : undefined;
+      : hasOverdueInspection
+        ? // overdueInspectionPermit is guaranteed non-null here for the same
+          // reason failedInspectionPermit is above.
+          `The ${overdueInspectionPermit!.permitType.toLowerCase()} permit has an overdue inspection with no recorded result.`
+        : hasInspectionDueSoon
+          ? 'An inspection is coming up in the next two weeks.'
+          : undefined;
 
   const result = computeReadiness({ crew, equipment: equipmentComponent, compliance, weather, permits: permitsComponent });
   return {

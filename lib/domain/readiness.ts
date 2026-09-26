@@ -106,17 +106,25 @@ export function weatherStatusFrom(params: {
 
 /**
  * Derives a permits component status from permit and inspection standing.
- * A failed inspection or an expired permit blocks the job outright — work
- * can't legally proceed either way, regardless of who's on site or what
- * equipment is there. An inspection coming up soon is a heads-up, not a
- * blocker.
+ * A failed inspection, an expired permit, or an inspection whose scheduled
+ * date has passed with no result ever recorded (still "SCHEDULED" —
+ * overdue) blocks the job outright — work can't legally proceed in any of
+ * those cases, regardless of who's on site or what equipment is there. An
+ * inspection coming up soon is a heads-up, not a blocker.
  */
 export function permitsStatusFrom(params: {
   hasFailedInspection: boolean;
   hasExpiredPermit: boolean;
+  hasOverdueInspection: boolean;
   hasInspectionDueSoon: boolean;
 }): ComponentStatus {
-  if (params.hasFailedInspection || params.hasExpiredPermit) return 'blocked';
+  // An inspection that's still "SCHEDULED" after its scheduledDate has
+  // passed is a missed/blown inspection in every way that matters — nobody
+  // recorded a pass or fail, the job is not permit-clear, and treating it
+  // as anything short of 'blocked' would let it read the same as a permit
+  // with no open issues at all. It's grouped with hasFailedInspection and
+  // hasExpiredPermit rather than with hasInspectionDueSoon for that reason.
+  if (params.hasFailedInspection || params.hasExpiredPermit || params.hasOverdueInspection) return 'blocked';
   if (params.hasInspectionDueSoon) return 'warning';
   return 'ok';
 }

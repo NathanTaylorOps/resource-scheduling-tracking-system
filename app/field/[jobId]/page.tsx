@@ -117,7 +117,7 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
         <h2 className="mb-3 font-semibold">Permits</h2>
         <ul className="divide-y divide-outdoor-border">
           {permits.map((p) => {
-            // Same three inputs, and the same permitsStatusFrom function,
+            // Same four inputs, and the same permitsStatusFrom function,
             // that the overall readiness banner above is built from — so
             // this row can never show "ok" for a permit that's the reason
             // the banner at the top of this same screen reads "Attention."
@@ -127,6 +127,9 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
             // mismatch happened.)
             const isExpired = p.status === 'EXPIRED' || (p.expiryDate !== null && isPastCalendarDate(p.expiryDate, now));
             const hasFailedInspection = p.inspections.some((i) => i.status === 'FAILED');
+            const hasOverdueInspection = p.inspections.some(
+              (i) => i.status === 'SCHEDULED' && i.scheduledDate !== null && i.scheduledDate.getTime() < now.getTime(),
+            );
             const hasInspectionDueSoon = p.inspections.some(
               (i) =>
                 i.status === 'SCHEDULED' &&
@@ -134,14 +137,21 @@ export default async function FieldJobPage({ params }: { params: { jobId: string
                 i.scheduledDate.getTime() >= now.getTime() &&
                 i.scheduledDate.getTime() - now.getTime() <= DUE_SOON_WINDOW_DAYS * DAY_MS,
             );
-            const status = permitsStatusFrom({ hasFailedInspection, hasExpiredPermit: isExpired, hasInspectionDueSoon });
+            const status = permitsStatusFrom({
+              hasFailedInspection,
+              hasExpiredPermit: isExpired,
+              hasOverdueInspection,
+              hasInspectionDueSoon,
+            });
             const label = isExpired
               ? 'Expired'
               : hasFailedInspection
                 ? 'Failed inspection'
-                : hasInspectionDueSoon
-                  ? 'Inspection due soon'
-                  : p.status.charAt(0) + p.status.slice(1).toLowerCase();
+                : hasOverdueInspection
+                  ? 'Inspection overdue'
+                  : hasInspectionDueSoon
+                    ? 'Inspection due soon'
+                    : p.status.charAt(0) + p.status.slice(1).toLowerCase();
             return (
               <li key={p.id} className="flex items-center justify-between py-2.5">
                 <span className="font-medium">{p.permitType.charAt(0) + p.permitType.slice(1).toLowerCase()}</span>

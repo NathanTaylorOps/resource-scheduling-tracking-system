@@ -478,22 +478,27 @@ console.log('\nreadiness.ts — composite decomposable score');
 
   assertEqual(
     'a failed inspection blocks regardless of permit or other-inspection standing',
-    permitsStatusFrom({ hasFailedInspection: true, hasExpiredPermit: false, hasInspectionDueSoon: false }),
+    permitsStatusFrom({ hasFailedInspection: true, hasExpiredPermit: false, hasOverdueInspection: false, hasInspectionDueSoon: false }),
     'blocked',
   );
   assertEqual(
     'an expired permit blocks even with no failed inspection',
-    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: true, hasInspectionDueSoon: false }),
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: true, hasOverdueInspection: false, hasInspectionDueSoon: false }),
+    'blocked',
+  );
+  assertEqual(
+    'an inspection past its scheduled date with no recorded result blocks, not just warns',
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasOverdueInspection: true, hasInspectionDueSoon: false }),
     'blocked',
   );
   assertEqual(
     'an inspection due soon warns, short of blocking',
-    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasInspectionDueSoon: true }),
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasOverdueInspection: false, hasInspectionDueSoon: true }),
     'warning',
   );
   assertEqual(
     'no issues reads as ok',
-    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasInspectionDueSoon: false }),
+    permitsStatusFrom({ hasFailedInspection: false, hasExpiredPermit: false, hasOverdueInspection: false, hasInspectionDueSoon: false }),
     'ok',
   );
 }
