@@ -10,9 +10,10 @@ function isUniqueConstraintError(error: unknown): boolean {
 }
 
 /** Adds one inspection to a permit's sequence, starting NOT_SCHEDULED. */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const permit = await prisma.permit.findUnique({ where: { id: params.id } });
     if (!permit) {
       throw new NotFoundError('No permit matches that id.');

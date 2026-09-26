@@ -30,7 +30,7 @@ const COMPLIANCE_LABEL: Record<'ok' | 'warning' | 'blocked', string> = {
 };
 
 export default async function EquipmentPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const equipment = await prisma.equipment.findMany({
     include: { compliance: true, lifeCounters: true },
     orderBy: { name: 'asc' },

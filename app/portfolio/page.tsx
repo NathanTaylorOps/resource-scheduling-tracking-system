@@ -26,7 +26,7 @@ interface JobWithReadiness {
  * division and counting each group's readiness mix.
  */
 export default async function PortfolioPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const jobs = await prisma.job.findMany({ orderBy: { name: 'asc' } });
 
   const jobsWithReadiness: JobWithReadiness[] = await Promise.all(

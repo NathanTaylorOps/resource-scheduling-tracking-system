@@ -29,9 +29,10 @@ function isUniqueConstraintError(error: unknown): boolean {
  * the assignments route's findFirst silently pick between two requirements
  * with possibly different required certs, so it's rejected here instead.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const job = await prisma.job.findUnique({ where: { id: params.id } });
     if (!job) {
       throw new NotFoundError('No job matches that id.');

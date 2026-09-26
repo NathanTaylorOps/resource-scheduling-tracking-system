@@ -21,8 +21,9 @@ const DEFAULT_ACTOR: ViewingActor = { role: 'EXECUTIVE', workerId: null, label: 
  * lib/audit.ts, to attribute an audit log entry to *something* even though
  * this app has no real login to attribute it to reliably.
  */
-export function getViewingActor(): ViewingActor {
-  const raw = cookies().get(ACTOR_COOKIE)?.value;
+export async function getViewingActor(): Promise<ViewingActor> {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(ACTOR_COOKIE)?.value;
   if (!raw) return DEFAULT_ACTOR;
   try {
     const parsed = JSON.parse(decodeURIComponent(raw));

@@ -28,9 +28,10 @@ const SCREENING_RESULT_BADGE: Record<string, { status: 'ok' | 'blocked' | 'warni
   PENDING: { status: 'warning', label: 'Pending' },
 };
 
-export default async function WorkerDetailPage({ params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const actor = getViewingActor();
+export default async function WorkerDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const prisma = await getDb();
+  const actor = await getViewingActor();
   const perms = permissionsFor(actor.role);
   const worker = await prisma.worker.findUnique({
     where: { id: params.id },

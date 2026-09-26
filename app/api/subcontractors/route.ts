@@ -13,7 +13,7 @@ import { parseJsonBody, requiredString } from '@/lib/validate';
  */
 export async function POST(request: NextRequest) {
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const body = await parseJsonBody(request);
 
     const businessName = requiredString(body, 'businessName', 'Enter a business name.');

@@ -12,9 +12,13 @@ import { NotFoundError } from '@/lib/validate';
  * claim needs a paper trail on, so deleting and re-logging is the right
  * correction path here rather than an edit-in-place.
  */
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string; meetingId: string } }) {
+export async function DELETE(
+  _request: NextRequest,
+  props: { params: Promise<{ id: string; meetingId: string }> }
+) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const meeting = await prisma.safetyMeeting.findUnique({ where: { id: params.meetingId } });
     if (!meeting || meeting.jobId !== params.id) {
       throw new NotFoundError('No matching toolbox talk for this job.');

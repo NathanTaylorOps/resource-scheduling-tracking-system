@@ -13,9 +13,10 @@ import { parseJsonBody, requiredDate, optionalDate, optionalString, requiredEnum
  * conflating the two would force a fake expiry cycle onto something that
  * doesn't have one for most screening types.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const worker = await prisma.worker.findUnique({ where: { id: params.id } });
     if (!worker) {
       throw new NotFoundError('No worker matches that id.');

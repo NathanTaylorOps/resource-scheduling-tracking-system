@@ -17,9 +17,10 @@ import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, NotFoun
  * A PATCH touches only the fields the client sent. A key sent as null or
  * blank clears that field; a key left out leaves it as it was.
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const permit = await prisma.permit.findUnique({ where: { id: params.id } });
     if (!permit) {
       throw new NotFoundError('No permit matches that id.');

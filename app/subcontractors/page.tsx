@@ -8,7 +8,7 @@ import { CreateSubcontractorForm } from '@/components/CreateSubcontractorForm';
 export const dynamic = 'force-dynamic';
 
 export default async function SubcontractorsPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const subcontractors = await prisma.subcontractor.findMany({
     include: { coiRecords: true, workers: true },
     orderBy: { businessName: 'asc' },

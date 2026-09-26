@@ -12,16 +12,18 @@ import { refreshLayer, FORECAST_TTL_MS, OUTLOOK_TTL_MS } from '@/lib/weather/cac
  * The actual cache/TTL/fallback logic lives in lib/weather/cache.ts, shared
  * with the session-provisioning warm-up in lib/db.ts.
  */
-export async function GET(request: NextRequest, { params }: { params: { jobId: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ jobId: string }> }) {
+  const params = await props.params;
   return handle(params.jobId, false);
 }
 
-export async function POST(request: NextRequest, { params }: { params: { jobId: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ jobId: string }> }) {
+  const params = await props.params;
   return handle(params.jobId, true);
 }
 
 async function handle(jobId: string, force: boolean) {
-  const prisma = getDb();
+  const prisma = await getDb();
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });

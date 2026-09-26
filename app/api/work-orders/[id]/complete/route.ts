@@ -16,9 +16,10 @@ import { parseJsonBody, optionalString, optionalNumber, NotFoundError, Validatio
  * behind it just closes out, and if it was the last thing keeping the
  * asset down, clears DOWN_FOR_SERVICE.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const workOrder = await prisma.workOrder.findUnique({ where: { id: params.id } });
     if (!workOrder) {
       throw new NotFoundError('Work order not found.');

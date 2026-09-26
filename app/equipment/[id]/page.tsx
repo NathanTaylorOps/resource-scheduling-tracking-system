@@ -15,8 +15,9 @@ import { JobStatus } from '@/lib/enums';
 
 export const dynamic = 'force-dynamic';
 
-export default async function EquipmentDetailPage({ params }: { params: { id: string } }) {
-  const prisma = getDb();
+export default async function EquipmentDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const prisma = await getDb();
   const equipment = await prisma.equipment.findFirst({
     where: { OR: [{ id: params.id }, { qrCode: params.id }] },
     include: {
@@ -31,7 +32,7 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
   if (!equipment) notFound();
 
   const now = new Date();
-  const host = headers().get('host');
+  const host = (await headers()).get('host');
   const protocol = host?.includes('localhost') ? 'http' : 'https';
   const qrDataUrl = await generateEquipmentQrDataUrl(equipment.qrCode, `${protocol}://${host}`);
 

@@ -9,8 +9,9 @@ import { AddCoiForm } from '@/components/AddCoiForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SubcontractorDetailPage({ params }: { params: { id: string } }) {
-  const prisma = getDb();
+export default async function SubcontractorDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const prisma = await getDb();
   const subcontractor = await prisma.subcontractor.findUnique({
     where: { id: params.id },
     include: {

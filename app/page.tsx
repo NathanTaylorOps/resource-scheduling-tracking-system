@@ -9,7 +9,7 @@ import { CircleCheck, TriangleAlert, CircleX, CircleHelp } from 'lucide-react';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const jobs = await prisma.job.findMany({
     where: { status: { in: ['ACTIVE', 'PLANNING'] } },
     orderBy: { startDate: 'asc' },
@@ -200,7 +200,7 @@ function SummaryTile({
 }
 
 async function getDueSoonCertCount(): Promise<number> {
-  const prisma = getDb();
+  const prisma = await getDb();
   const now = new Date();
   const certs = await prisma.workerCertification.findMany();
   // Matches the tile's own label exactly: 'expiring_soon' and 'expired' are

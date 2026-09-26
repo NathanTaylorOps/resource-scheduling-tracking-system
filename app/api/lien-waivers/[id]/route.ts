@@ -13,9 +13,10 @@ import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, NotFoun
  *
  * A PATCH touches only the fields the client sent.
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const waiver = await prisma.lienWaiver.findUnique({ where: { id: params.id } });
     if (!waiver) {
       throw new NotFoundError('No lien waiver matches that id.');

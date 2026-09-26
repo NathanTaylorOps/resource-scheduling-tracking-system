@@ -16,7 +16,7 @@ import { parseJsonBody, requiredString, optionalString, requiredDate, optionalEn
  */
 export async function POST(request: NextRequest) {
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const body = await parseJsonBody(request);
 
     const name = requiredString(body, 'name', 'Enter a name.');

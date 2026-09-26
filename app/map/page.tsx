@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 export const dynamic = 'force-dynamic';
 
 export default async function MapPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const jobs = await prisma.job.findMany({
     where: { status: { in: [JobStatus.PLANNING, JobStatus.ACTIVE] } },
     orderBy: { name: 'asc' },

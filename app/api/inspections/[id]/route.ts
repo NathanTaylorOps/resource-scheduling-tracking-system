@@ -18,9 +18,10 @@ import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, optiona
  * fields are cleared, keeping a stale correction note from lingering on an
  * inspection that later passed.
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const inspection = await prisma.inspection.findUnique({ where: { id: params.id } });
     if (!inspection) {
       throw new NotFoundError('No inspection matches that id.');

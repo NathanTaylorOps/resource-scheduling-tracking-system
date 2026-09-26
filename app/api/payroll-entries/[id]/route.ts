@@ -9,9 +9,10 @@ import { parseJsonBody, requiredEnum, NotFoundError } from '@/lib/validate';
  * week's report. Not audit-logged — see AuditLogEntry's comment in
  * schema.prisma for the deliberately short list of what is.
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const entry = await prisma.certifiedPayrollEntry.findUnique({ where: { id: params.id } });
     if (!entry) {
       throw new NotFoundError('No payroll entry matches that id.');

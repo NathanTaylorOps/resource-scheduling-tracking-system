@@ -11,9 +11,10 @@ import { parseJsonBody, requiredString, optionalString, requiredDate, requiredEn
  * is a separate PATCH (app/api/lien-waivers/[id]/route.ts), since that's
  * the transition worth auditing, not this creation.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const job = await prisma.job.findUnique({ where: { id: params.id } });
     if (!job) {
       throw new NotFoundError('No job matches that id.');

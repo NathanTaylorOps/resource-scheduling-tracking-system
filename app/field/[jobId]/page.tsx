@@ -19,8 +19,9 @@ export const dynamic = 'force-dynamic';
  * toolbox talk) that matter most from the field — fast enough to use
  * one-handed, not the full GM cross-job detail view at /jobs/[id].
  */
-export default async function FieldJobPage({ params }: { params: { jobId: string } }) {
-  const prisma = getDb();
+export default async function FieldJobPage(props: { params: Promise<{ jobId: string }> }) {
+  const params = await props.params;
+  const prisma = await getDb();
   const job = await prisma.job.findUnique({
     where: { id: params.jobId },
     include: { assignments: { include: { worker: { include: { certifications: true } } }, orderBy: { roleOnJob: 'asc' } } },

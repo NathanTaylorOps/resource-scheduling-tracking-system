@@ -34,7 +34,7 @@ type Row = {
 };
 
 export default async function ExpiringPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const now = new Date();
 
   const [workers, subcontractors, equipment, permits] = await Promise.all([

@@ -22,7 +22,7 @@ export async function recordAudit(
   tx: Pick<PrismaClient, 'auditLogEntry'>,
   params: { entityType: string; entityId: string; action: string; summary: string },
 ): Promise<void> {
-  const actor = getViewingActor();
+  const actor = await getViewingActor();
   await tx.auditLogEntry.create({
     data: {
       entityType: params.entityType,

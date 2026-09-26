@@ -11,7 +11,7 @@ const WINDOW_DAYS = 21;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default async function SchedulePage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const windowStart = startOfDay(new Date());
   const windowEnd = new Date(windowStart.getTime() + WINDOW_DAYS * DAY_MS);
 

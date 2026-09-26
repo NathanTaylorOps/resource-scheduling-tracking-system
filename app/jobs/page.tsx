@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function JobsPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const jobs = await prisma.job.findMany({ orderBy: { startDate: 'asc' } });
 
   return (

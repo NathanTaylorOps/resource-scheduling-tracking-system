@@ -12,9 +12,10 @@ import { parseJsonBody, has, optionalString, requiredEnum, NotFoundError } from 
  *
  * A PATCH touches only the fields the client sent.
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const incident = await prisma.safetyIncident.findUnique({ where: { id: params.id } });
     if (!incident) {
       throw new NotFoundError('No safety incident matches that id.');

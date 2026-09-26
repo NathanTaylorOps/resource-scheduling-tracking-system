@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
  * components to find it.
  */
 export default async function FieldJobPickerPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const jobs = await prisma.job.findMany({
     where: { status: { in: [JobStatus.PLANNING, JobStatus.ACTIVE] } },
     orderBy: { name: 'asc' },

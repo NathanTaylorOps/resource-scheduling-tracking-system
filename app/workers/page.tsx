@@ -8,7 +8,7 @@ import { CreateWorkerForm } from '@/components/CreateWorkerForm';
 export const dynamic = 'force-dynamic';
 
 export default async function WorkersPage() {
-  const prisma = getDb();
+  const prisma = await getDb();
   const workers = await prisma.worker.findMany({
     include: { certifications: true },
     orderBy: { name: 'asc' },

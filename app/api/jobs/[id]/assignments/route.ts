@@ -28,9 +28,10 @@ function isUniqueConstraintError(error: unknown): boolean {
  * the page next renders), not be silently prevented, since a real PM
  * sometimes needs to book over a conflict on purpose and sort it out.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const job = await prisma.job.findUnique({ where: { id: params.id } });
     if (!job) {
       throw new NotFoundError('No job matches that id.');

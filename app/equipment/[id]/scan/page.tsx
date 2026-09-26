@@ -13,8 +13,9 @@ export const dynamic = 'force-dynamic';
  * it resolves the asset and pulls the pick-lists, then hands off to the
  * client form that actually records the scan.
  */
-export default async function EquipmentScanActionPage({ params }: { params: { id: string } }) {
-  const prisma = getDb();
+export default async function EquipmentScanActionPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const prisma = await getDb();
   const equipment = await prisma.equipment.findFirst({
     where: { OR: [{ id: params.id }, { qrCode: params.id }] },
   });

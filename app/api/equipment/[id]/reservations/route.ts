@@ -19,9 +19,10 @@ function isUniqueConstraintError(error: unknown): boolean {
  * superintendent sometimes needs to book over a conflict on purpose and
  * sort it out with whoever else has the asset.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const equipment = await prisma.equipment.findFirst({ where: { OR: [{ id: params.id }, { qrCode: params.id }] } });
     if (!equipment) {
       throw new NotFoundError('No equipment matches that id.');

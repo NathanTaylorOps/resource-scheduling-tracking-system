@@ -15,9 +15,13 @@ import { parseJsonBody, has, requiredString, optionalString, requiredNumber, Not
  * Only the fields the client sent are touched; a key sent as null or blank
  * clears that field, a key left out leaves it as it was.
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string; logId: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  props: { params: Promise<{ id: string; logId: string }> }
+) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const log = await prisma.dailyLog.findUnique({ where: { id: params.logId } });
     if (!log || log.jobId !== params.id) {
       throw new NotFoundError('No matching daily log for this job.');

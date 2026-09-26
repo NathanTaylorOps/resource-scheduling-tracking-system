@@ -125,7 +125,7 @@ export function toDomainPlan(plan: {
 }
 
 export async function computeJobReadiness(jobId: string): Promise<ReadinessResult> {
-  const prisma = getDb();
+  const prisma = await getDb();
   const now = new Date();
 
   // The queries below split into two waves rather than running one after

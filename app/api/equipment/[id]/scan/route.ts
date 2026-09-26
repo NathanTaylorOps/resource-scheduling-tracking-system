@@ -46,9 +46,10 @@ function validatePhotoDataUrl(value: string): void {
  * The scan event itself is never edited after the fact; a correction is
  * its own new event, the same way a paper log would be corrected.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     // Only used to resolve the id-or-QR-code lookup and return a fast 404
     // before parsing the body. The transaction below re-reads the row by
     // its resolved id, so two scans racing on the same asset each get a

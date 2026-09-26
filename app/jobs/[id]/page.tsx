@@ -25,9 +25,10 @@ import { permissionsFor } from '@/lib/role';
 
 export const dynamic = 'force-dynamic';
 
-export default async function JobDetailPage({ params }: { params: { id: string } }) {
-  const prisma = getDb();
-  const actor = getViewingActor();
+export default async function JobDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const prisma = await getDb();
+  const actor = await getViewingActor();
   const perms = permissionsFor(actor.role);
   const job = await prisma.job.findUnique({
     where: { id: params.id },

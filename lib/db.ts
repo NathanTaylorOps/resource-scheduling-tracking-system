@@ -154,8 +154,9 @@ function sweepOrphanedSessionFiles(): void {
  * Must be called from a route handler or a server component's render path
  * (anywhere Next's `cookies()` is valid) — not from module scope.
  */
-export function getDb(): PrismaClient {
-  const sessionId = cookies().get(SESSION_COOKIE)?.value;
+export async function getDb(): Promise<PrismaClient> {
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
   if (!isValidSessionId(sessionId)) {
     // middleware.ts issues or replaces the cookie before any page or route
     // runs, so this only fires if a request bypassed it entirely.

@@ -18,9 +18,10 @@ function isUniqueConstraintError(error: unknown): boolean {
  * midnight of that day in the app timezone, which is what the job and
  * field pages look today's entry up by.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const job = await prisma.job.findUnique({ where: { id: params.id } });
     if (!job) {
       throw new NotFoundError('No job matches that id.');

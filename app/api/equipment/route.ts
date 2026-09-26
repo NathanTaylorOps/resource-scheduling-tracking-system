@@ -15,7 +15,7 @@ const MAX_QR_RETRIES = 1;
  * asset-tag number is assigned by whoever's running the yard, not invented
  * by whoever's typing the intake form. */
 async function nextQrCode(): Promise<string> {
-  const prisma = getDb();
+  const prisma = await getDb();
   const existing = await prisma.equipment.findMany({
     where: { qrCode: { startsWith: QR_PREFIX } },
     select: { qrCode: true },
@@ -34,7 +34,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const body = await parseJsonBody(request);
 
     const name = requiredString(body, 'name', 'Enter an asset name.');

@@ -17,9 +17,10 @@ import { parseJsonBody, requiredString, requiredDate, optionalDate, optionalEnum
  * pattern rather than rejected, so a stray value left over from switching
  * the renewal-pattern select doesn't block an otherwise-valid save.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const prisma = getDb();
+    const prisma = await getDb();
     const worker = await prisma.worker.findUnique({ where: { id: params.id } });
     if (!worker) {
       throw new NotFoundError('No worker matches that id.');
