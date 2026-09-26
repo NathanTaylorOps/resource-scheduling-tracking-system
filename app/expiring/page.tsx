@@ -201,7 +201,7 @@ export default async function ExpiringPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-outdoor-border">
+      <div className="overflow-hidden rounded-lg border border-outdoor-border shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <tr>

@@ -51,7 +51,7 @@ export default async function JobsPage() {
         {jobs.length === 0 && <p className="text-sm text-zinc-500">No jobs on file.</p>}
       </div>
 
-      <div className="hidden overflow-hidden rounded-lg border border-outdoor-border sm:block">
+      <div className="hidden overflow-hidden rounded-lg border border-outdoor-border shadow-sm sm:block">
         <table className="w-full text-sm">
           <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <tr>
