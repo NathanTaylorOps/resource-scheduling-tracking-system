@@ -81,6 +81,7 @@ A few other things are out of scope for this pass, on purpose:
 - No background jobs or cron workers. The weather layer refreshes on view (plus a manual "Refresh now") and doesn't poll on a schedule nothing here needs.
 - Weather sensitivity is tagged per job for this first pass and applies to no individual task yet (a pour, a roofing day and a crane lift would each get their own threshold). That is the right long-term design and a documented next step.
 - No OSHA 300-series injury/illness recordkeeping (Forms 300, 300A, 301). Toolbox talks capture safety-culture documentation: what's being taught and who attended. The federally mandated injury and illness log is a different record, with its own recordability rules, retention requirements and posting obligations. A partial, non-compliant version of a regulated recordkeeping system would be worse than none. If this ever became a real product, that would be a dedicated effort with its own compliance review.
+- No bulk data import or export yet. Records are created directly in the app, one at a time. Before publishing, this tool went in front of two operations and logistics managers based in Australia, who validated the use case and specifically asked for the ability to bring in and pull out data from their own systems and files. That is real, planned next work, following the same CSV path already shipped in [job-cost-risk-dashboard](https://github.com/NathanTaylorOps/job-cost-risk-dashboard).
 
 ## Scaling to enterprise
 
