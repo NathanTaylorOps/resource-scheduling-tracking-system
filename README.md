@@ -97,7 +97,7 @@ A later pass added features aimed at what a bigger GC needs on top of the operat
 
 ## Tech stack
 
-- **Next.js 14** (App Router) + **TypeScript**, **React 18**
+- **Next.js 16** (App Router) + **TypeScript**, **React 18**
 - **Prisma** ORM over **SQLite**, a local file-based database with no external database server to stand up
 - **Tailwind CSS**, with a small custom "outdoor mode" palette tuned for field and mobile readability
 - **html5-qrcode** for in-browser camera QR scanning, **qrcode** for tag generation
@@ -179,9 +179,11 @@ Status and category fields (job status, equipment status, scan action, and so on
 
 Built through AI-paired development: an AI coding agent wrote and iterated on the implementation, and I directed and reviewed it at every stage. I set the requirements, made the architecture and data-model calls, and checked the result against my own operational judgment as it went.
 
-The judgment behind it comes from running field operations. I'm currently Operations Lead at a Pacific Northwest custom-home builder, covering crews, subcontractors, equipment, permits, and the back office (contracts, insurance, budgeting) behind live residential and commercial builds, at a scale where a scheduling conflict or a lapsed COI is a real Tuesday. Before that I worked in supply chain and facilities for a Seattle manufacturer, project management for an Atlanta commercial builder, and a partnership running the field crew and job costing for a residential/commercial builder in NSW. Most of "What makes this different" answers a specific way I've watched software get one of those situations wrong: a subcontractor's insurance status folded into one worker's row instead of the firm's own record, a fleet tool that tracks one counter per asset, a certification's expiry date treated as a hard wall when the real renewal rule is more involved.
+The judgment behind it comes from running field operations. I'm currently Operations Lead at a custom-home builder, covering crews, subcontractors, equipment, permits, and the back office (contracts, insurance, budgeting) behind live residential and commercial builds, at a scale where a scheduling conflict or a lapsed COI is a real Tuesday. Before that I worked in supply chain and facilities for an IoT manufacturer, project management for a commercial builder, and a partnership running the field crew and job costing for a residential/commercial builder. Most of "What makes this different" answers a specific way I've watched software get one of those situations wrong: a subcontractor's insurance status folded into one worker's row instead of the firm's own record, a fleet tool that tracks one counter per asset, a certification's expiry date treated as a hard wall when the real renewal rule is more involved.
 
 That background is also where the access model comes from (see Scope, above). It mirrors a real tool I've relied on to run a GC's own operations, and I trust that shape because I've worked inside it.
+
+This is one piece of a small portfolio built the same way, from operations work rather than tutorials. See [BidGate](https://github.com/NathanTaylorOps/bidgate) for bid qualification, [job-cost-risk-dashboard](https://github.com/NathanTaylorOps/job-cost-risk-dashboard) for job-cost and schedule risk, and [scenario-sensitivity-engine](https://github.com/NathanTaylorOps/scenario-sensitivity-engine) for GM-level scenario modeling.
 
 ## License
 
