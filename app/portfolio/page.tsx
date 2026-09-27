@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { computeJobReadiness } from '@/lib/readiness-service';
+import { computeReadinessForJobs } from '@/lib/readiness-service';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 
@@ -29,12 +29,14 @@ export default async function PortfolioPage() {
   const prisma = await getDb();
   const jobs = await prisma.job.findMany({ orderBy: { name: 'asc' } });
 
-  const jobsWithReadiness: JobWithReadiness[] = await Promise.all(
-    jobs.map(async (job) => {
-      const readiness = await computeJobReadiness(job.id);
-      return { id: job.id, name: job.name, address: job.address, division: job.division, overall: readiness.overall };
-    }),
-  );
+  const readinessById = await computeReadinessForJobs(jobs.map((job) => job.id));
+  const jobsWithReadiness: JobWithReadiness[] = jobs.map((job) => ({
+    id: job.id,
+    name: job.name,
+    address: job.address,
+    division: job.division,
+    overall: readinessById.get(job.id)!.overall,
+  }));
 
   const groups = new Map<string, JobWithReadiness[]>();
   for (const job of jobsWithReadiness) {

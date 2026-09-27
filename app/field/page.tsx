@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { computeJobReadiness } from '@/lib/readiness-service';
+import { computeReadinessForJobs } from '@/lib/readiness-service';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import { JobStatus } from '@/lib/enums';
 
@@ -20,9 +20,8 @@ export default async function FieldJobPickerPage() {
     where: { status: { in: [JobStatus.PLANNING, JobStatus.ACTIVE] } },
     orderBy: { name: 'asc' },
   });
-  const readinessByJob = await Promise.all(
-    jobs.map(async (job) => ({ job, readiness: await computeJobReadiness(job.id) })),
-  );
+  const readinessById = await computeReadinessForJobs(jobs.map((job) => job.id));
+  const readinessByJob = jobs.map((job) => ({ job, readiness: readinessById.get(job.id)! }));
 
   return (
     <div className="mx-auto max-w-lg space-y-4">

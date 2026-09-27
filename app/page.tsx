@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { computeJobReadiness } from '@/lib/readiness-service';
+import { computeReadinessForJobs } from '@/lib/readiness-service';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import type { ComponentStatus, ReadinessInputs, ReadinessResult } from '@/lib/domain/readiness';
 import { getCertificationStatus } from '@/lib/domain/certifications';
@@ -15,9 +15,8 @@ export default async function DashboardPage() {
     orderBy: { startDate: 'asc' },
   });
 
-  const readinessByJob = await Promise.all(
-    jobs.map(async (job) => ({ job, readiness: await computeJobReadiness(job.id) })),
-  );
+  const readinessById = await computeReadinessForJobs(jobs.map((job) => job.id));
+  const readinessByJob = jobs.map((job) => ({ job, readiness: readinessById.get(job.id)! }));
 
   const dueSoonCerts = await getDueSoonCertCount();
   const openWorkOrders = await prisma.workOrder.count({ where: { status: { not: 'COMPLETED' } } });

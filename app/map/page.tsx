@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { JobStatus } from '@/lib/enums';
-import { computeJobReadiness } from '@/lib/readiness-service';
+import { computeReadinessForJobs } from '@/lib/readiness-service';
 import { JobMapLoader } from '@/components/JobMapLoader';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -14,16 +14,15 @@ export default async function MapPage() {
     orderBy: { name: 'asc' },
   });
 
-  const jobsWithReadiness = await Promise.all(
-    jobs.map(async (job) => ({
-      id: job.id,
-      name: job.name,
-      address: job.address,
-      latitude: job.latitude,
-      longitude: job.longitude,
-      overall: (await computeJobReadiness(job.id)).overall,
-    })),
-  );
+  const readinessById = await computeReadinessForJobs(jobs.map((job) => job.id));
+  const jobsWithReadiness = jobs.map((job) => ({
+    id: job.id,
+    name: job.name,
+    address: job.address,
+    latitude: job.latitude,
+    longitude: job.longitude,
+    overall: readinessById.get(job.id)!.overall,
+  }));
 
   return (
     <div className="space-y-6">
