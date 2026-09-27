@@ -34,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               description:
                 'Crew scheduling, equipment tracking, compliance, and weather risk for a custom-home GC.',
               applicationCategory: 'BusinessApplication',
-              operatingSystem: 'Any (runs entirely in the browser)',
+              operatingSystem: 'Web (server-rendered — no installation required)',
               url: 'https://resource-scheduling-tracking-system.onrender.com/',
               offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
               author: { '@type': 'Person', name: 'Nathan Taylor' },
