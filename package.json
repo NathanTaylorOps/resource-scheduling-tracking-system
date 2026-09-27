@@ -16,7 +16,8 @@
     "db:studio": "prisma studio",
     "db:build-template": "rm -f prisma/template.db && DATABASE_URL=file:./template.db npx prisma db push --skip-generate && DATABASE_URL=file:./template.db tsx prisma/seed.ts",
     "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:web": "node scripts/smoke.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -39,8 +40,10 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
+    "axe-core": "^4.10.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^16.3.6",
+    "playwright": "^1.56.0",
     "postcss": "^8.4.39",
     "prisma": "^5.18.0",
     "tailwindcss": "^3.4.6",

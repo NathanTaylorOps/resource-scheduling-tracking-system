@@ -105,7 +105,7 @@ export default async function EquipmentPage() {
 
       <div className="hidden overflow-hidden rounded-lg border border-outdoor-border shadow-sm sm:block">
         <table className="w-full text-sm">
-          <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-600">
             <tr>
               <th className="px-4 py-3">Asset</th>
               <th className="px-4 py-3">Category</th>

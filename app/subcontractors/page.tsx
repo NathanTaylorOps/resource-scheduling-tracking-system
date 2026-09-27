@@ -69,7 +69,7 @@ export default async function SubcontractorsPage() {
 
       <div className="hidden overflow-hidden rounded-lg border border-outdoor-border shadow-sm sm:block">
         <table className="w-full text-sm">
-          <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          <thead className="bg-outdoor-surface text-left text-xs font-semibold uppercase tracking-wide text-zinc-600">
             <tr>
               <th className="px-4 py-3">Business</th>
               <th className="px-4 py-3">Trade</th>

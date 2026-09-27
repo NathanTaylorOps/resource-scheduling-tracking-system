@@ -1,14 +1,10 @@
 # Runs on every push and pull request: installs the app the same way the
 # README's "Getting started" section does, pushes the schema straight to a
 # throwaway SQLite database, runs the dependency-free domain-logic suite,
-# and does a full production build. Nothing here needs a database service
-# or any secret — that's the payoff of this being a local-SQLite app by
-# design (see README, "Tech stack").
-#
-# Uses `npm install` rather than `npm ci`, and `prisma db push` rather than
-# `prisma migrate deploy`, since no package-lock.json or prisma/migrations/
-# history exists yet. Both are the natural upgrade once a lockfile and a
-# real migration history exist.
+# does a full production build, and then smoke-tests the running app
+# (including an accessibility check) with Playwright. Nothing here needs a
+# database service or any secret - that's the payoff of this being a
+# local-SQLite app by design (see README, "Tech stack").
 name: CI
 
 on:
@@ -29,7 +25,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      # A throwaway file, local to the runner — not the dev.db a
+      # A throwaway file, local to the runner - not the dev.db a
       # contributor uses locally, and gone when the job ends.
       DATABASE_URL: 'file:./ci.db'
       NWS_USER_AGENT: 'resource-scheduling-tracking-system-ci (ci@example.com)'
@@ -41,11 +37,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # No cache: 'npm' — actions/setup-node's built-in npm cache keys
-          # off a committed lockfile, and this repo doesn't have one yet.
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # Explicit rather than relying on npm's postinstall hook, so the
       # client generation the build below depends on is spelled out as its
@@ -56,7 +51,7 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # A fast, explicit type-checking gate — separate from the build step
+      # A fast, explicit type-checking gate - separate from the build step
       # below, which would also fail on a type error but only after paying
       # for a full Next.js production build first. Runs after prisma
       # generate (the Prisma client's generated types are what most of the
@@ -66,11 +61,10 @@ jobs:
         run: npm run typecheck
 
       # Pushes schema.prisma straight to a fresh database exactly as a real
-      # deployment would need it applied — the most direct regression check
+      # deployment would need it applied - the most direct regression check
       # available for the SQLite/enum schema issue this project hit during
       # its first real run (see README, "Data model"). `db push` rather than
-      # `migrate deploy` because no migration history is committed yet — see
-      # the note at the top of this file.
+      # `migrate deploy` because no migration history is committed yet.
       - name: Push the Prisma schema
         run: npx prisma db push
 
@@ -79,3 +73,15 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The UI smoke test below runs against `next start`, which reads from
+      # a per-visitor SQLite copy provisioned from this template - see
+      # lib/db.ts and README, "Getting started".
+      - name: Build the demo template database
+        run: npm run db:build-template
+
+      - name: Install Playwright's Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the UI smoke test (incl. accessibility)
+        run: npm run test:web
