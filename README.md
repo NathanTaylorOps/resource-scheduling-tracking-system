@@ -10,7 +10,9 @@ The system is built around one management question:
 
 > The demo runs on a free host and may take about a minute to wake on first load. Every visitor receives an isolated temporary dataset, so the system can be edited safely.
 
-<!-- HERO-IMAGE -->
+![Operations dashboard showing portfolio readiness, blockers and management exceptions](docs/assets/dashboard.png)
+
+*Portfolio-level readiness turns crew, equipment, compliance, weather and permit constraints into visible management exceptions.*
 
 ## Executive overview
 
@@ -43,6 +45,15 @@ The project is deliberately more than a scheduling screen. The important design 
 - **Traceable decisions.** Material state changes—assignments, reservations, certifications, custody, defects, maintenance completion, permits, inspections, waivers and incidents—feed an operational audit trail.
 
 ## Management views
+
+![Action Centre prioritizing blocked work and operational interventions](docs/assets/action-centre.png)
+
+*The Action Centre separates critical blockers from warnings and planning unknowns so intervention starts with the highest-consequence work.*
+
+![Job readiness detail showing component-level operating controls](docs/assets/job-readiness.png)
+
+*Job-level readiness preserves the reason behind the overall verdict instead of hiding it inside a composite score.*
+
 
 The application includes an **Action Centre** for blockers and interventions, a three-week crew look-ahead, cross-job expiry/compliance review, multi-site map and portfolio roll-up, job-level readiness, equipment and worker records, and a mobile-first field mode.
 
