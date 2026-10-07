@@ -64,81 +64,91 @@ async function cleanup() {
   await prisma.job.deleteMany({ where: { name: { startsWith: 'IT —' } } });
 }
 
-console.log('workflows.integration.test.ts — database-backed operational workflows');
-await cleanup();
-
-await check('persisted certification state gates assignment eligibility', async () => {
-  const job = await createJob('IT — Certification gate');
-  const worker = await prisma.worker.create({
-    data: { name: 'IT — Electrician', trade: 'Electrician', employmentType: 'DIRECT_EMPLOYEE', hireDate: date(-300) },
+async function main() {
+  console.log('workflows.integration.test.ts — database-backed operational workflows');
+  await cleanup();
+  
+  await check('persisted certification state gates assignment eligibility', async () => {
+    const job = await createJob('IT — Certification gate');
+    const worker = await prisma.worker.create({
+      data: { name: 'IT — Electrician', trade: 'Electrician', employmentType: 'DIRECT_EMPLOYEE', hireDate: date(-300) },
+    });
+    await prisma.jobRoleRequirement.create({
+      data: { jobId: job.id, roleOrTrade: 'Electrician', requiredCount: 1, requiredCertTypes: 'Electrical License' },
+    });
+    await prisma.workerCertification.create({
+      data: { workerId: worker.id, certType: 'Electrical License', issuingBody: 'Test Authority', issueDate: date(-700), expiryDate: date(-1) },
+    });
+  
+    const persisted = await prisma.worker.findUniqueOrThrow({ where: { id: worker.id }, include: { certifications: true } });
+    const requirement = await prisma.jobRoleRequirement.findUniqueOrThrow({ where: { jobId_roleOrTrade: { jobId: job.id, roleOrTrade: 'Electrician' } } });
+    const gate = evaluateAssignmentGate(requirement.requiredCertTypes, persisted.certifications, now);
+    assert(!gate.eligible && gate.missingOrExpired.includes('Electrical License'), 'expired persisted certification should block assignment');
   });
-  await prisma.jobRoleRequirement.create({
-    data: { jobId: job.id, roleOrTrade: 'Electrician', requiredCount: 1, requiredCertTypes: 'Electrical License' },
+  
+  await check('persisted overlapping equipment reservations surface a conflict', async () => {
+    const firstJob = await createJob('IT — Reservation A');
+    const secondJob = await createJob('IT — Reservation B');
+    const equipment = await prisma.equipment.create({
+      data: { name: 'IT — Excavator', category: 'Earthmoving', qrCode: `IT-EQ-${Date.now()}`, status: 'ACTIVE', acquisitionDate: date(-500), inServiceDate: date(-490) },
+    });
+    await prisma.equipmentReservation.createMany({
+      data: [
+        { equipmentId: equipment.id, jobId: firstJob.id, start: date(2), end: date(8) },
+        { equipmentId: equipment.id, jobId: secondJob.id, start: date(6), end: date(10) },
+      ],
+    });
+  
+    const rows = await prisma.equipmentReservation.findMany({ where: { equipmentId: equipment.id } });
+    const conflicts = findEquipmentConflicts(rows);
+    assert(conflicts.length === 1, `expected one persisted reservation conflict, got ${conflicts.length}`);
   });
-  await prisma.workerCertification.create({
-    data: { workerId: worker.id, certType: 'Electrical License', issuingBody: 'Test Authority', issueDate: date(-700), expiryDate: date(-1) },
+  
+  await check('failed persisted inspection blocks permit and overall readiness', async () => {
+    const job = await createJob('IT — Failed inspection');
+    const permit = await prisma.permit.create({
+      data: {
+        jobId: job.id, permitType: 'BUILDING', issuingAuthority: 'Test Authority', status: 'ISSUED', appliedDate: date(-20),
+        inspections: { create: [{ inspectionType: 'FRAMING', sequence: 1, status: 'FAILED', completedDate: date(-1) }] },
+      },
+      include: { inspections: true },
+    });
+    const permitResult = evaluatePermitReadiness({ permits: [permit], now });
+    const overall = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'ok', weather: 'ok', permits: permitResult.status });
+    assert(permitResult.status === 'blocked', 'failed inspection should block permit readiness');
+    assert(overall.overall === 'blocked', 'blocked permit component should block overall readiness');
   });
-
-  const persisted = await prisma.worker.findUniqueOrThrow({ where: { id: worker.id }, include: { certifications: true } });
-  const requirement = await prisma.jobRoleRequirement.findUniqueOrThrow({ where: { jobId_roleOrTrade: { jobId: job.id, roleOrTrade: 'Electrician' } } });
-  const gate = evaluateAssignmentGate(requirement.requiredCertTypes, persisted.certifications, now);
-  assert(!gate.eligible && gate.missingOrExpired.includes('Electrical License'), 'expired persisted certification should block assignment');
-});
-
-await check('persisted overlapping equipment reservations surface a conflict', async () => {
-  const firstJob = await createJob('IT — Reservation A');
-  const secondJob = await createJob('IT — Reservation B');
-  const equipment = await prisma.equipment.create({
-    data: { name: 'IT — Excavator', category: 'Earthmoving', qrCode: `IT-EQ-${Date.now()}`, status: 'ACTIVE', acquisitionDate: date(-500), inServiceDate: date(-490) },
+  
+  await check('persisted down-for-service asset blocks equipment and overall readiness', async () => {
+    const job = await createJob('IT — Down equipment');
+    const equipment = await prisma.equipment.create({
+      data: {
+        name: 'IT — Compressor', category: 'Air', qrCode: `IT-DOWN-${Date.now()}`, status: 'DOWN_FOR_SERVICE',
+        acquisitionDate: date(-300), inServiceDate: date(-290), currentJobId: job.id,
+      },
+    });
+    await prisma.workOrder.create({
+      data: { equipmentId: equipment.id, source: 'DEFECT_REPORT', status: 'OPEN', description: 'Defect found during custody scan.' },
+    });
+  
+    const persisted = await prisma.equipment.findUniqueOrThrow({ where: { id: equipment.id } });
+    const equipmentResult = evaluateEquipmentReadiness({ jobId: job.id, onSiteEquipment: [persisted], reservations: [], reservedButDownForService: [] });
+    const overall = computeReadiness({ crew: 'ok', equipment: equipmentResult.status, compliance: 'ok', weather: 'ok', permits: 'ok' });
+    assert(equipmentResult.status === 'blocked', 'on-site down-for-service asset should block equipment readiness');
+    assert(overall.overall === 'blocked', 'blocked equipment component should block overall readiness');
   });
-  await prisma.equipmentReservation.createMany({
-    data: [
-      { equipmentId: equipment.id, jobId: firstJob.id, start: date(2), end: date(8) },
-      { equipmentId: equipment.id, jobId: secondJob.id, start: date(6), end: date(10) },
-    ],
+  
+  await cleanup();
+
+  console.log(`\n${passed} passed, ${failed} failed`);
+  if (failed > 0) process.exitCode = 1;
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
   });
-
-  const rows = await prisma.equipmentReservation.findMany({ where: { equipmentId: equipment.id } });
-  const conflicts = findEquipmentConflicts(rows);
-  assert(conflicts.length === 1, `expected one persisted reservation conflict, got ${conflicts.length}`);
-});
-
-await check('failed persisted inspection blocks permit and overall readiness', async () => {
-  const job = await createJob('IT — Failed inspection');
-  const permit = await prisma.permit.create({
-    data: {
-      jobId: job.id, permitType: 'BUILDING', issuingAuthority: 'Test Authority', status: 'ISSUED', appliedDate: date(-20),
-      inspections: { create: [{ inspectionType: 'FRAMING', sequence: 1, status: 'FAILED', completedDate: date(-1) }] },
-    },
-    include: { inspections: true },
-  });
-  const permitResult = evaluatePermitReadiness({ permits: [permit], now });
-  const overall = computeReadiness({ crew: 'ok', equipment: 'ok', compliance: 'ok', weather: 'ok', permits: permitResult.status });
-  assert(permitResult.status === 'blocked', 'failed inspection should block permit readiness');
-  assert(overall.overall === 'blocked', 'blocked permit component should block overall readiness');
-});
-
-await check('persisted down-for-service asset blocks equipment and overall readiness', async () => {
-  const job = await createJob('IT — Down equipment');
-  const equipment = await prisma.equipment.create({
-    data: {
-      name: 'IT — Compressor', category: 'Air', qrCode: `IT-DOWN-${Date.now()}`, status: 'DOWN_FOR_SERVICE',
-      acquisitionDate: date(-300), inServiceDate: date(-290), currentJobId: job.id,
-    },
-  });
-  await prisma.workOrder.create({
-    data: { equipmentId: equipment.id, source: 'DEFECT_REPORT', status: 'OPEN', description: 'Defect found during custody scan.' },
-  });
-
-  const persisted = await prisma.equipment.findUniqueOrThrow({ where: { id: equipment.id } });
-  const equipmentResult = evaluateEquipmentReadiness({ jobId: job.id, onSiteEquipment: [persisted], reservations: [], reservedButDownForService: [] });
-  const overall = computeReadiness({ crew: 'ok', equipment: equipmentResult.status, compliance: 'ok', weather: 'ok', permits: 'ok' });
-  assert(equipmentResult.status === 'blocked', 'on-site down-for-service asset should block equipment readiness');
-  assert(overall.overall === 'blocked', 'blocked equipment component should block overall readiness');
-});
-
-await cleanup();
-await prisma.$disconnect();
-
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
