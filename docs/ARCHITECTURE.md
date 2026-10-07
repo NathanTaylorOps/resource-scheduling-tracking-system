@@ -24,7 +24,7 @@ Prisma
 Per-visitor SQLite database
 ```
 
-The hosted portfolio demo deliberately gives each visitor an isolated temporary SQLite database copied from a seeded template. This lets reviewers change records freely without seeing or corrupting another visitor's session.
+The hosted demonstration deliberately gives each visitor an isolated temporary SQLite database copied from a seeded template. This allows records to be changed freely without one visitor seeing or corrupting another visitor's session.
 
 That design is for the demo, not a claim about the ideal enterprise deployment.
 
