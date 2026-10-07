@@ -63,6 +63,9 @@ async function main() {
   });
 
   let browser;
+  let serverOutput = '';
+  server.stdout.on('data', (d) => (serverOutput += d.toString()));
+  server.stderr.on('data', (d) => (serverOutput += d.toString()));
   try {
     await waitForServer(BASE_URL);
     browser = await chromium.launch();
@@ -121,6 +124,10 @@ async function main() {
     await open(mobilePage, '/field');
     await shot(mobilePage, 'field-mobile', { fullPage: true });
     await mobile.close();
+  } catch (error) {
+    console.error('\n--- next start output ---');
+    console.error(serverOutput.slice(-12000));
+    throw error;
   } finally {
     if (browser) await browser.close();
     server.kill('SIGTERM');
