@@ -29,6 +29,7 @@ interface IncidentData {
   description: string;
   correctionAction: string | null;
   status: string;
+  updatedAt: string;
   reportedByWorker: { id: string; name: string } | null;
   involvedWorker: { id: string; name: string } | null;
 }
@@ -270,7 +271,7 @@ function CloseIncidentForm({ incident: i, onDone, onCancel }: { incident: Incide
       const response = await fetch(`/api/safety-incidents/${i.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus, correctionAction: correctionAction.trim() || undefined }),
+        body: JSON.stringify({ status: nextStatus, expectedUpdatedAt: i.updatedAt, correctionAction: correctionAction.trim() || undefined }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
