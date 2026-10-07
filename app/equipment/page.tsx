@@ -63,9 +63,12 @@ export default async function EquipmentPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Equipment</h1>
-        <Link href="/equipment/scan" className="field-btn inline-flex w-fit bg-zinc-900 text-white hover:bg-zinc-800">
-          Scan QR
-        </Link>
+        <div className="flex items-center gap-3">
+          <a href="/api/exports/equipment" className="text-sm font-medium text-zinc-600 hover:underline">Export CSV</a>
+          <Link href="/equipment/scan" className="field-btn inline-flex w-fit bg-zinc-900 text-white hover:bg-zinc-800">
+            Scan QR
+          </Link>
+        </div>
       </div>
       <CreateEquipmentForm />
 
