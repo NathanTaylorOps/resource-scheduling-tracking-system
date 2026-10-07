@@ -56,9 +56,12 @@ export default async function WorkersPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Crew</h1>
-        <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline">
-          Subcontractor firms →
-        </Link>
+        <div className="flex items-center gap-3">
+          <a href="/api/exports/workers" className="text-sm font-medium text-zinc-600 hover:underline">Export CSV</a>
+          <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline">
+            Subcontractor firms →
+          </Link>
+        </div>
       </div>
       <CreateWorkerForm subcontractors={subcontractors} />
 

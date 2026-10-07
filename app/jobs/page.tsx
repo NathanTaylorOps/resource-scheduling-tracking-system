@@ -17,7 +17,10 @@ export default async function JobsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
+        <a href="/api/exports/jobs" className="text-sm font-medium text-zinc-600 hover:underline">Export CSV</a>
+      </div>
       <CreateJobForm />
 
       {/* Below sm: a table with five columns doesn't fit a phone screen, so

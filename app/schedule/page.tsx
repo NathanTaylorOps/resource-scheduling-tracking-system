@@ -49,7 +49,10 @@ export default async function SchedulePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Crew schedule</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Crew schedule</h1>
+          <a href="/api/exports/assignments" className="text-sm font-medium text-zinc-600 hover:underline">Export assignments CSV</a>
+        </div>
         <p className="mt-1 text-sm text-zinc-500">
           Three-week look-ahead — every crew member with an assignment in this window.
         </p>
