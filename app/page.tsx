@@ -35,6 +35,7 @@ export default async function DashboardPage() {
           label={pluralize(readinessByJob.filter((r) => r.readiness.overall !== 'ok').length, 'Job at risk', 'Jobs at risk')}
           value={readinessByJob.filter((r) => r.readiness.overall !== 'ok').length}
           tone="warning"
+          href="/actions"
         />
         <SummaryTile
           label={pluralize(dueSoonCerts, 'Certification due soon or expired', 'Certifications due soon or expired')}
@@ -46,6 +47,7 @@ export default async function DashboardPage() {
           label={pluralize(openWorkOrders, 'Open work order', 'Open work orders')}
           value={openWorkOrders}
           tone="neutral"
+          href="/actions"
         />
       </div>
 
