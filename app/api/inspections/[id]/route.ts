@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InspectionStatus, ReinspectionChannel } from '@/lib/enums';
-import { recordAudit } from '@/lib/audit';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api';
 import { parseJsonBody, has, optionalString, optionalDate, requiredDate, requiredEnum, optionalEnum, NotFoundError, ConflictError } from '@/lib/validate';
 
@@ -79,7 +79,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         await recordAudit(tx, {
           entityType: 'Inspection',
           entityId: inspection.id,
-          action: 'STATUS_CHANGE',
+          action: AuditAction.STATUS_CHANGED,
           summary: `${current.inspectionType} inspection status changed from ${current.status} to ${data.status}.`,
         });
       }
