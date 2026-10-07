@@ -53,7 +53,7 @@ Every visitor receives an isolated temporary dataset. The seed is synthetic and 
 
 ## Engineering approach
 
-The project uses Next.js, TypeScript, Prisma and SQLite for the hosted demonstration. Business rules are separated into a domain layer and exercised by automated domain tests. CI runs linting, type checking, schema verification, domain tests, a production build, Playwright UI smoke tests and accessibility checks.
+The project uses Next.js, TypeScript, Prisma and SQLite for the hosted demonstration. Business rules are separated into a domain layer and exercised by automated regression tests. CI runs linting, type checking, schema verification, domain tests, database-backed operational workflow tests, a production build, Playwright UI smoke tests and accessibility checks. Multi-record operational changes use deliberate transaction boundaries, disputed record edits use stale-write protection, and material state changes feed the audit trail.
 
 The current public deployment intentionally optimizes for a safe, low-cost portfolio demo. The repository documents the changes required before a real multi-user deployment: authentication, server-side RBAC, PostgreSQL/tenant boundaries, migrations, concurrency controls and production observability.
 
@@ -68,14 +68,8 @@ The project is intended to demonstrate more than software implementation. It sho
 - keeping management decisions traceable and explainable;
 - defining product scope instead of accumulating unrelated features.
 
-## Next maturity steps
+## Current maturity boundary
 
-The highest-value next steps are engineering and workflow improvements rather than feature volume:
+The major portfolio-hardening steps originally identified for this build are now implemented: the Action Centre, validated CSV import/export, focused readiness evaluators, modular seed data, stale-write and transaction protection, database-backed workflow tests, and expanded operational audit events.
 
-1. committed database migrations;
-2. focused domain and integration test suites;
-3. an Action Centre for cross-job blockers and interventions;
-4. CSV import/export for operational interoperability;
-5. stale-write and transactional protections;
-6. expanded audit events;
-7. production authentication/RBAC if the application moves beyond portfolio use.
+The principal remaining production boundary is architectural rather than feature volume: committed database migration history, real authentication and server-side authorization, PostgreSQL/tenant boundaries, backups, observability and deployment controls. Those are intentionally not disguised by the hosted portfolio-demo architecture.
