@@ -6,6 +6,19 @@ Field operations for a custom-home general contractor in one app: crew schedulin
 
 First load can take about a minute while the free host wakes up.
 
+**Portfolio review:** start with the live demo, then read the [case study](docs/PORTFOLIO_CASE_STUDY.md) for the operating problem and product decisions, or [architecture](docs/ARCHITECTURE.md) for the engineering design and production boundary.
+
+### At a glance
+
+| Area | What the system does |
+| --- | --- |
+| Job readiness | Rolls crew, equipment, compliance, weather and permits into an explainable operating verdict |
+| Resource planning | Detects crew conflicts, staffing gaps and overlapping equipment reservations |
+| Field control | Tracks QR equipment custody, defects, maintenance, daily logs and toolbox talks |
+| Compliance | Tracks worker credentials, subcontractor standing, equipment compliance, permits and inspections |
+| Management visibility | Provides cross-job exception views, schedule look-ahead, field mode and audit activity |
+| Demo safety | Gives every visitor an isolated synthetic dataset that can be edited freely |
+
 <!-- HERO-IMAGE -->
 
 This is a field-operations and resource-management platform for a custom-home general contractor. It covers crew scheduling and staffing plans, QR-tagged equipment tracking and reservations, worker, subcontractor and asset compliance, permits and inspections, preventive maintenance, daily field documentation, a mobile-first field view, and a weather-risk overlay. Everything lives in one system, so "is this job ready to run tomorrow" is a question the software answers.
