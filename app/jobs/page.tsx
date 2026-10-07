@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { CreateJobForm } from '@/components/CreateJobForm';
+import { CsvImportPanel } from '@/components/CsvImportPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function JobsPage() {
         <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
         <a href="/api/exports/jobs" className="text-sm font-medium text-zinc-600 hover:underline">Export CSV</a>
       </div>
-      <CreateJobForm />
+      <div className="flex flex-wrap items-center gap-3"><CreateJobForm /><CsvImportPanel kind="jobs" /></div>
 
       {/* Below sm: a table with five columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-
