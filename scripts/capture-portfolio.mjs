@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const PORT = 3101;
 const BASE_URL = `http://localhost:${PORT}`;
-const OUT = process.env.PORTFOLIO_SCREENSHOTS_DIR || 'artifacts/portfolio-screenshots';
+const OUT = process.env.PORTFOLIO_SCREENSHOTS_DIR || 'docs/assets';
 
 async function waitForServer(url, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
