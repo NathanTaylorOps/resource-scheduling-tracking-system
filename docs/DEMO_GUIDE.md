@@ -1,6 +1,6 @@
-# 3-Minute Portfolio Review
+# 3-Minute System Tour
 
-This route is designed for a hiring manager or operations leader who wants to understand the project without reading the repository first.
+This guide provides a short path through the system's core operating workflows and design decisions.
 
 ## 1. Start at the dashboard
 
@@ -24,7 +24,7 @@ operating data → rule evaluation → visible exception → intervention
 
 ## 3. Open a job with a blocker
 
-Review a blocked job and inspect the component breakdown.
+Open a blocked job and inspect the component breakdown.
 
 Look for examples such as:
 
@@ -52,7 +52,7 @@ Use **Field** to see the same operating system from a job-site perspective: toda
 
 ## What to look for in the repository
 
-If the operating concept is relevant, the fastest technical review is:
+For the implementation behind these workflows, continue with:
 
 1. [Portfolio case study](PORTFOLIO_CASE_STUDY.md) — management problem and product decisions.
 2. [Architecture](ARCHITECTURE.md) — domain separation, demo isolation and production boundary.
