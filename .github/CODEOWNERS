@@ -1,0 +1,8 @@
+# Repository ownership
+* @NathanTaylorOps
+
+# High-risk areas
+/prisma/ @NathanTaylorOps
+/lib/domain/ @NathanTaylorOps
+/app/api/ @NathanTaylorOps
+/.github/ @NathanTaylorOps

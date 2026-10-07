@@ -15,7 +15,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:build-template": "rm -f prisma/template.db && DATABASE_URL=file:./template.db npx prisma db push --skip-generate && DATABASE_URL=file:./template.db tsx prisma/seed.ts",
-    "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts",
+    "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts && tsx lib/domain/__tests__/readiness.test.ts",
     "typecheck": "tsc --noEmit",
     "test:web": "node scripts/smoke.mjs"
   },
