@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "test:web": "node scripts/smoke.mjs",
     "test:integration": "tsx lib/__tests__/workflows.integration.test.ts",
-    "capture:portfolio": "node scripts/capture-portfolio.mjs"
+    "capture:portfolio": "npm run db:build-template && node scripts/capture-portfolio.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
