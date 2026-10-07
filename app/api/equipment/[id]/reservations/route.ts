@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
 import { apiError } from '@/lib/api';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import { parseJsonBody, requiredString, requiredDate, ValidationError, NotFoundError, ConflictError } from '@/lib/validate';
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -49,8 +50,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     // overlapping-but-different booking, which stays intentionally allowed
     // (see this function's own doc comment).
     try {
-      const reservation = await prisma.equipmentReservation.create({
-        data: { equipmentId: equipment.id, jobId: job.id, start, end },
+      const reservation = await prisma.$transaction(async (tx) => {
+        const created = await tx.equipmentReservation.create({
+          data: { equipmentId: equipment.id, jobId: job.id, start, end },
+        });
+        await recordAudit(tx, {
+          entityType: 'EquipmentReservation',
+          entityId: created.id,
+          action: AuditAction.RESERVATION_CREATED,
+          summary: `${equipment.name} reserved for ${job.name} from ${start.toISOString()} to ${end.toISOString()}.`,
+        });
+        return created;
       });
       return NextResponse.json({ id: reservation.id }, { status: 201 });
     } catch (error) {
