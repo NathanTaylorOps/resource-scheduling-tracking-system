@@ -2,11 +2,11 @@
 
 **Construction field operations, resource readiness and compliance in one decision-support system.**
 
-A portfolio project built around one management question:
+The system is built around one management question:
 
 > **Can this job run as planned, and what needs intervention before it can?**
 
-[**Open the live demo**](https://resource-scheduling-tracking-system.onrender.com/) · [**3-minute review guide**](docs/DEMO_GUIDE.md) · [**Case study**](docs/PORTFOLIO_CASE_STUDY.md) · [**Architecture**](docs/ARCHITECTURE.md)
+[**Open the live demo**](https://resource-scheduling-tracking-system.onrender.com/) · [**3-minute system tour**](docs/DEMO_GUIDE.md) · [**Case study**](docs/PORTFOLIO_CASE_STUDY.md) · [**Architecture**](docs/ARCHITECTURE.md)
 
 > The demo runs on a free host and may take about a minute to wake on first load. Every visitor receives an isolated temporary dataset, so the system can be edited safely.
 
@@ -48,7 +48,7 @@ The application includes an **Action Centre** for blockers and interventions, a 
 
 CSV export is available for core operational datasets. Crew, jobs and equipment also support a validated **preview → duplicate check → explicit confirmation → transaction-backed import** workflow rather than writing unreviewed spreadsheet rows directly into the system.
 
-For a guided review, use the [3-minute demo path](docs/DEMO_GUIDE.md).
+For a guided walkthrough, use the [3-minute system tour](docs/DEMO_GUIDE.md).
 
 ## Engineering and control design
 
