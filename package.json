@@ -18,7 +18,8 @@
     "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts && tsx lib/domain/__tests__/readiness.test.ts && tsx lib/__tests__/csv.test.ts && tsx lib/__tests__/csv-import.test.ts",
     "typecheck": "tsc --noEmit",
     "test:web": "node scripts/smoke.mjs",
-    "test:integration": "tsx lib/__tests__/workflows.integration.test.ts"
+    "test:integration": "tsx lib/__tests__/workflows.integration.test.ts",
+    "capture:portfolio": "node scripts/capture-portfolio.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
