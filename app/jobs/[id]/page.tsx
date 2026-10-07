@@ -538,6 +538,7 @@ export default async function JobDetailPage(props: { params: Promise<{ id: strin
               payPeriodEnd: w.payPeriodEnd.toISOString(),
               amount: w.amount,
               status: w.status,
+              updatedAt: w.updatedAt.toISOString(),
               receivedDate: w.receivedDate?.toISOString() ?? null,
               notes: w.notes,
             }))}
@@ -559,6 +560,7 @@ export default async function JobDetailPage(props: { params: Promise<{ id: strin
               description: i.description,
               correctionAction: i.correctionAction,
               status: i.status,
+              updatedAt: i.updatedAt.toISOString(),
               reportedByWorker: i.reportedByWorker ? { id: i.reportedByWorker.id, name: i.reportedByWorker.name } : null,
               involvedWorker: i.involvedWorker ? { id: i.involvedWorker.id, name: i.involvedWorker.name } : null,
             }))}
