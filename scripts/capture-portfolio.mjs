@@ -3,10 +3,23 @@ import { mkdir } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createRequire } from 'node:module';
+import net from 'node:net';
 
 const require = createRequire(import.meta.url);
-const PORT = 3101;
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL;
+
+async function reserveFreePort() {
+  return await new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address ? address.port : null;
+      probe.close((err) => (err ? reject(err) : resolve(port)));
+    });
+  });
+}
 const OUT = process.env.PORTFOLIO_SCREENSHOTS_DIR || 'docs/assets';
 
 async function waitForServer(url, timeoutMs = 30_000) {
@@ -39,8 +52,11 @@ async function shot(page, name, options = {}) {
 
 async function main() {
   await mkdir(OUT, { recursive: true });
+  const port = await reserveFreePort();
+  if (!port) throw new Error('Could not allocate a free local port for screenshot capture');
+  BASE_URL = `http://127.0.0.1:${port}`;
   const nextBin = require.resolve('next/dist/bin/next');
-  const server = spawn(process.execPath, [nextBin, 'start', '-p', String(PORT)], {
+  const server = spawn(process.execPath, [nextBin, 'start', '-H', '127.0.0.1', '-p', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env },
   });
