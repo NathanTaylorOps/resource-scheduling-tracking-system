@@ -61,7 +61,7 @@ Overall readiness = worst applicable component
 
 This makes a blocked state actionable. A user can see whether the constraint is an unfilled role, unavailable asset, expired credential, failed inspection or weather risk.
 
-`lib/readiness-service.ts` currently performs much of the cross-domain orchestration. A planned maintainability improvement is to split that service into focused component evaluators while preserving the same public result.
+`lib/readiness-service.ts` performs batched persistence orchestration and composes focused evaluators under `lib/readiness/` for crew, equipment, compliance, weather and permits. This keeps the public readiness result stable while preventing one service from owning every component rule.
 
 ## Demo session architecture
 
@@ -103,9 +103,7 @@ The existing UI role switcher demonstrates intended permission differences but i
 Before treating the application as production deployable, the principal engineering work is:
 
 - committed Prisma migration history;
-- API/integration tests around critical mutations;
-- stale-write/concurrency protection;
-- deliberate transaction boundaries for multi-record operations;
+- broader route-level integration coverage where it adds value beyond the existing database-backed workflow tests;
 - server-side authentication and authorization;
 - structured logging/error monitoring;
 - production database, backup and recovery design.
