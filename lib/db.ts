@@ -24,6 +24,8 @@ const TEMPLATE_DB_PATH = path.join(process.cwd(), 'prisma', 'template.db');
 const MAX_CONCURRENT_SESSIONS = 40;
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+let lastSessionSweepAt = 0;
 
 interface PooledClient {
   client: PrismaClient;
@@ -166,9 +168,12 @@ export async function getDb(): Promise<PrismaClient> {
     );
   }
 
-  // Cheap, request-count-based sampling rather than a real scheduler — see
-  // sweepIdleSessions.
-  if (Math.random() < 0.05) {
+  // Run cleanup deterministically at most once per interval. This keeps the
+  // request-driven demo architecture (no background worker required) while
+  // avoiding random cleanup behaviour that is harder to reason about and test.
+  const now = Date.now();
+  if (now - lastSessionSweepAt >= SESSION_SWEEP_INTERVAL_MS) {
+    lastSessionSweepAt = now;
     sweepIdleSessions();
     sweepOrphanedSessionFiles();
   }
