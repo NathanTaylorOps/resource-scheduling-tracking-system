@@ -14,7 +14,7 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:build-template": "rm -f prisma/template.db && DATABASE_URL=file:./template.db npx prisma db push --skip-generate && DATABASE_URL=file:./template.db tsx prisma/seed.ts",
+    "db:build-template": "node scripts/build-template.mjs",
     "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts && tsx lib/domain/__tests__/readiness.test.ts && tsx lib/__tests__/csv.test.ts && tsx lib/__tests__/csv-import.test.ts",
     "typecheck": "tsc --noEmit",
     "test:web": "node scripts/smoke.mjs",
