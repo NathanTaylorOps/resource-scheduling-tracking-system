@@ -26,6 +26,7 @@ interface LienWaiverData {
   payPeriodEnd: string;
   amount: number | null;
   status: string;
+  updatedAt: string;
   receivedDate: string | null;
   notes: string | null;
 }
@@ -262,6 +263,7 @@ function EditWaiverForm({ waiver: w, onDone, onCancel }: { waiver: LienWaiverDat
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status,
+          expectedUpdatedAt: w.updatedAt,
           receivedDate: status === 'RECEIVED' ? receivedDate : undefined,
           notes: notes.trim() || null,
         }),
