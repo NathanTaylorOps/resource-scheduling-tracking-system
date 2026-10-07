@@ -4,6 +4,7 @@ import { getCertificationStatus } from '@/lib/domain/certifications';
 import type { ComponentStatus } from '@/lib/domain/readiness';
 import { StatusBadge } from '@/components/StatusBadge';
 import { CreateWorkerForm } from '@/components/CreateWorkerForm';
+import { CsvImportPanel } from '@/components/CsvImportPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,7 @@ export default async function WorkersPage() {
           </Link>
         </div>
       </div>
-      <CreateWorkerForm subcontractors={subcontractors} />
+      <div className="flex flex-wrap items-center gap-3"><CreateWorkerForm subcontractors={subcontractors} /><CsvImportPanel kind="workers" /></div>
 
       {/* Below sm: a table with four columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-

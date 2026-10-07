@@ -4,6 +4,7 @@ import { resolveCounterValue, resolveDueSoonWindow } from '@/lib/readiness-servi
 import { getComplianceStatus } from '@/lib/domain/compliance';
 import { StatusBadge } from '@/components/StatusBadge';
 import { CreateEquipmentForm } from '@/components/CreateEquipmentForm';
+import { CsvImportPanel } from '@/components/CsvImportPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +71,7 @@ export default async function EquipmentPage() {
           </Link>
         </div>
       </div>
-      <CreateEquipmentForm />
+      <div className="flex flex-wrap items-center gap-3"><CreateEquipmentForm /><CsvImportPanel kind="equipment" /></div>
 
       {/* Below sm: a table with five columns doesn't fit a phone screen, so
           this is a stacked card list instead of a clipped or sideways-
