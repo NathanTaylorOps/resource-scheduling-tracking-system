@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
 import net from 'node:net';
 
 const require = createRequire(import.meta.url);
@@ -66,11 +67,22 @@ async function main() {
     await waitForServer(BASE_URL);
     browser = await chromium.launch();
 
+    const sessionId = randomUUID();
+
     const desktop = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
       reducedMotion: 'reduce',
     });
+    await desktop.addCookies([
+      {
+        name: 'rsts_session',
+        value: sessionId,
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
     const page = await desktop.newPage();
 
     await open(page, '/');
@@ -96,6 +108,15 @@ async function main() {
       deviceScaleFactor: 1,
       reducedMotion: 'reduce',
     });
+    await mobile.addCookies([
+      {
+        name: 'rsts_session',
+        value: sessionId,
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
     const mobilePage = await mobile.newPage();
     await open(mobilePage, '/field');
     await shot(mobilePage, 'field-mobile', { fullPage: true });
