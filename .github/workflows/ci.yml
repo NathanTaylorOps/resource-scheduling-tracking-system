@@ -71,6 +71,9 @@ jobs:
       - name: Run the domain-logic test suite
         run: npm run test:domain
 
+      - name: Run database-backed integration tests
+        run: npm run test:integration
+
       - name: Build
         run: npm run build
 
