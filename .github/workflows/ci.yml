@@ -88,3 +88,46 @@ jobs:
 
       - name: Run the UI smoke test (incl. accessibility)
         run: npm run test:web
+
+
+  portfolio-screenshots:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: 'file:./screenshots.db'
+      NWS_USER_AGENT: 'resource-scheduling-tracking-system-ci (ci@example.com)'
+      PORTFOLIO_SCREENSHOTS_DIR: 'artifacts/portfolio-screenshots'
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Build
+        run: npm run build
+
+      - name: Build the demo template database
+        run: npm run db:build-template
+
+      - name: Install Playwright's Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Capture portfolio screenshots
+        run: npm run capture:portfolio
+
+      - name: Upload portfolio screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-screenshots
+          path: artifacts/portfolio-screenshots/*.png
+          if-no-files-found: error
