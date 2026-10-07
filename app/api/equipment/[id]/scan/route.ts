@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { ScanAction, WorkOrderSource, WorkOrderStatus } from '@/lib/enums';
 import { custodyUpdateFor, CustodyActionRejected } from '@/lib/domain/custody';
 import { apiError } from '@/lib/api';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import {
   parseJsonBody,
   requiredString,
@@ -150,6 +151,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           data: custodyUpdate as Prisma.EquipmentUpdateInput,
         });
 
+        const auditAction =
+          action === ScanAction.CHECK_OUT
+            ? AuditAction.ASSET_CHECKED_OUT
+            : action === ScanAction.CHECK_IN
+              ? AuditAction.ASSET_CHECKED_IN
+              : action === ScanAction.LOCATION_UPDATE
+                ? AuditAction.ASSET_LOCATION_UPDATED
+                : AuditAction.ASSET_DEFECT_REPORTED;
+
         let workOrderId: string | null = null;
         if (action === ScanAction.DEFECT_REPORTED) {
           const workOrder = await tx.workOrder.create({
@@ -163,6 +173,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           });
           workOrderId = workOrder.id;
         }
+
+        await recordAudit(tx, {
+          entityType: 'Equipment',
+          entityId: equipment.id,
+          action: auditAction,
+          summary:
+            action === ScanAction.DEFECT_REPORTED
+              ? `Defect reported on ${equipment.name}: ${conditionNote}; work order ${workOrderId} opened.`
+              : `${equipment.name} custody action ${action} recorded by worker ${scannedByWorkerId}${scanJobId ? ` for job ${scanJobId}` : ''}.`,
+        });
 
         return { scanEventId: scanEvent.id, equipmentStatus: updatedEquipment.status, workOrderId };
       });
