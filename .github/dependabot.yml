@@ -8,7 +8,20 @@ updates:
     groups:
       production-dependencies:
         dependency-type: production
+        update-types:
+          - minor
+          - patch
       development-dependencies:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Major framework/runtime upgrades are migration work, not routine
+      # dependency maintenance. Review them deliberately with their paired
+      # packages, migration guides, visual regression checks, and full CI.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     commit-message:
       prefix: deps
