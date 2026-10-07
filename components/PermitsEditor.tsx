@@ -33,6 +33,7 @@ interface InspectionData {
   inspectionType: string;
   sequence: number;
   status: string;
+  updatedAt: string;
   scheduledDate: string | null;
   completedDate: string | null;
   inspectorNotes: string | null;
@@ -48,6 +49,7 @@ interface PermitData {
   permitNumber: string | null;
   issuingAuthority: string;
   status: string;
+  updatedAt: string;
   appliedDate: string;
   issuedDate: string | null;
   expiryDate: string | null;
@@ -197,6 +199,7 @@ function EditPermitForm({ permit: p, onDone, onCancel }: { permit: PermitData; o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status,
+          expectedUpdatedAt: p.updatedAt,
           permitNumber: permitNumber.trim() || null,
           issuedDate: issuedDate || null,
           expiryDate: expiryDate || null,
@@ -483,6 +486,7 @@ function InspectionOutcomeForm({ inspection: i, onDone, onCancel }: { inspection
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status,
+          expectedUpdatedAt: i.updatedAt,
           scheduledDate: scheduledDate || null,
           completedDate: completedDate || null,
           inspectorNotes: inspectorNotes.trim() || null,

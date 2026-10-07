@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 import { PermitStatus } from '@/lib/enums';
 import { recordAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api';
-import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, NotFoundError, ValidationError } from '@/lib/validate';
+import { parseJsonBody, has, optionalString, optionalDate, requiredDate, requiredEnum, NotFoundError, ValidationError, ConflictError } from '@/lib/validate';
 
 /**
  * Advances a permit past its initial filing: mark it issued, record the
@@ -27,6 +27,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
 
     const body = await parseJsonBody(request);
+    const expectedUpdatedAt = requiredDate(body, 'expectedUpdatedAt', 'Refresh this record before editing it again.');
     const data: {
       status?: string;
       permitNumber?: string | null;
@@ -55,17 +56,22 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const result = await tx.permit.update({ where: { id: permit.id }, data });
+      const current = await tx.permit.findUnique({ where: { id: permit.id } });
+      if (!current) throw new NotFoundError('No permit matches that id.');
+      if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictError('This permit changed after you opened it. Refresh and review the latest values before saving.');
+      }
+      const result = await tx.permit.update({ where: { id: permit.id, updatedAt: expectedUpdatedAt }, data });
       // Permit status is exactly the kind of fact that shows up in a
       // deposition years after a job closes — "who marked this ISSUED, and
       // when" — so this is one of the handful of mutations wired to
       // lib/audit.ts.
-      if (data.status !== undefined && permit.status !== data.status) {
+      if (data.status !== undefined && current.status !== data.status) {
         await recordAudit(tx, {
           entityType: 'Permit',
           entityId: permit.id,
           action: 'STATUS_CHANGE',
-          summary: `Status changed from ${permit.status} to ${data.status}.`,
+          summary: `Status changed from ${current.status} to ${data.status}.`,
         });
       }
       return result;

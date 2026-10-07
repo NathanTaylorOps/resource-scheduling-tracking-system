@@ -437,12 +437,14 @@ export default async function JobDetailPage(props: { params: Promise<{ id: strin
               // expiredPermits — a permit whose expiryDate has passed reads
               // as expired here too, even before its stored status field has
               // been updated to say so.
+              updatedAt: p.updatedAt.toISOString(),
               isExpired: p.status === 'EXPIRED' || (p.expiryDate !== null && p.expiryDate.getTime() < now.getTime()),
               inspections: p.inspections.map((i) => ({
                 id: i.id,
                 inspectionType: i.inspectionType,
                 sequence: i.sequence,
                 status: i.status,
+                updatedAt: i.updatedAt.toISOString(),
                 scheduledDate: i.scheduledDate?.toISOString() ?? null,
                 completedDate: i.completedDate?.toISOString() ?? null,
                 inspectorNotes: i.inspectorNotes,
