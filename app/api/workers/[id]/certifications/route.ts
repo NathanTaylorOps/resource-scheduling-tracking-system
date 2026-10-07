@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { RenewalPattern } from '@/lib/enums';
 import { apiError } from '@/lib/api';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import { parseJsonBody, requiredString, requiredDate, optionalDate, optionalEnum, NotFoundError, ValidationError } from '@/lib/validate';
 
 /**
@@ -38,16 +39,25 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const renewalFiledDate =
       renewalPattern === RenewalPattern.GRACE_PERIOD ? optionalDate(body, 'renewalFiledDate', 'Enter a valid renewal-filed date.') : null;
 
-    const certification = await prisma.workerCertification.create({
-      data: {
-        workerId: worker.id,
-        certType,
-        issuingBody,
-        issueDate,
-        expiryDate,
-        renewalPattern,
-        renewalFiledDate,
-      },
+    const certification = await prisma.$transaction(async (tx) => {
+      const created = await tx.workerCertification.create({
+        data: {
+          workerId: worker.id,
+          certType,
+          issuingBody,
+          issueDate,
+          expiryDate,
+          renewalPattern,
+          renewalFiledDate,
+        },
+      });
+      await recordAudit(tx, {
+        entityType: 'WorkerCertification',
+        entityId: created.id,
+        action: AuditAction.CERTIFICATION_CREATED,
+        summary: `${certType} certification added for ${worker.name}; expires ${expiryDate.toISOString()}.`,
+      });
+      return created;
     });
 
     return NextResponse.json({ id: certification.id }, { status: 201 });
