@@ -9,7 +9,7 @@ function run(command, args, env) {
     const child = spawn(command, args, {
       stdio: 'inherit',
       env: { ...process.env, ...env },
-      shell: process.platform === 'win32',
+      shell: false,
     });
     child.once('error', reject);
     child.once('exit', (code) => {
