@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 import { InspectionStatus, ReinspectionChannel } from '@/lib/enums';
 import { recordAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api';
-import { parseJsonBody, has, optionalString, optionalDate, requiredEnum, optionalEnum, NotFoundError } from '@/lib/validate';
+import { parseJsonBody, has, optionalString, optionalDate, requiredDate, requiredEnum, optionalEnum, NotFoundError, ConflictError } from '@/lib/validate';
 
 /**
  * Records an inspection's actual outcome — the write side of the
@@ -28,6 +28,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
 
     const body = await parseJsonBody(request);
+    const expectedUpdatedAt = requiredDate(body, 'expectedUpdatedAt', 'Refresh this record before editing it again.');
     const data: {
       status?: string;
       scheduledDate?: Date | null;
@@ -65,16 +66,21 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const result = await tx.inspection.update({ where: { id: inspection.id }, data });
+      const current = await tx.inspection.findUnique({ where: { id: inspection.id } });
+      if (!current) throw new NotFoundError('No inspection matches that id.');
+      if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictError('This inspection changed after you opened it. Refresh and review the latest values before saving.');
+      }
+      const result = await tx.inspection.update({ where: { id: inspection.id, updatedAt: expectedUpdatedAt }, data });
       // Same reasoning as the permit-status audit entry — an inspection
       // outcome (especially a FAILED one) is exactly the kind of fact a
       // claim or dispute years later turns on.
-      if (data.status !== undefined && inspection.status !== data.status) {
+      if (data.status !== undefined && current.status !== data.status) {
         await recordAudit(tx, {
           entityType: 'Inspection',
           entityId: inspection.id,
           action: 'STATUS_CHANGE',
-          summary: `${inspection.inspectionType} inspection status changed from ${inspection.status} to ${data.status}.`,
+          summary: `${current.inspectionType} inspection status changed from ${current.status} to ${data.status}.`,
         });
       }
       return result;
