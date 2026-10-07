@@ -12,7 +12,7 @@ type Equipment = {
 };
 
 export function evaluateComplianceReadiness(input: {
-  assignments: Array<{ worker: { name: string; certifications: Array<{ certType: string; expiryDate: Date | null; renewalPattern: string; renewalFiledDate: Date | null }>; subcontractor: null | { businessName: string; licenseExpiryDate: Date | null; coiRecords: Array<{ effectiveDate: Date; expiryDate: Date }> } } }>;
+  assignments: Array<{ worker: { name: string; certifications: Array<{ certType: string; expiryDate: Date; renewalPattern: string; renewalFiledDate: Date | null }>; subcontractor: null | { businessName: string; licenseExpiryDate: Date | null; coiRecords: Array<{ coverageType: string; expiryDate: Date }> } } }>;
   equipment: Equipment[];
   now: Date;
 }): { status: ComponentStatus; reason?: string } {
