@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  ListChecks,
   HardHat,
   Briefcase,
   FolderKanban,
@@ -23,6 +24,7 @@ export interface NavLink {
 // out of sync (a link added to one but not the other, wrong order, etc).
 export const NAV_LINKS: NavLink[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/actions', label: 'Action Centre', icon: ListChecks },
   { href: '/field', label: 'Field', icon: HardHat },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/portfolio', label: 'Portfolio', icon: FolderKanban },
