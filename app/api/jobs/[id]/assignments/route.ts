@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { getDb } from '@/lib/db';
 import { evaluateAssignmentGate } from '@/lib/domain/certifications';
 import { apiError } from '@/lib/api';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import { parseJsonBody, requiredString, requiredDate, ValidationError, NotFoundError, ConflictError } from '@/lib/validate';
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -72,8 +73,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     // retried submit), never an overlapping-but-different assignment, which
     // stays intentionally allowed (see this function's own doc comment).
     try {
-      const assignment = await prisma.assignment.create({
-        data: { workerId: worker.id, jobId: job.id, roleOnJob, start, end },
+      const assignment = await prisma.$transaction(async (tx) => {
+        const created = await tx.assignment.create({
+          data: { workerId: worker.id, jobId: job.id, roleOnJob, start, end },
+        });
+        await recordAudit(tx, {
+          entityType: 'Assignment',
+          entityId: created.id,
+          action: AuditAction.ASSIGNMENT_CREATED,
+          summary: `${worker.name} assigned to ${job.name} as ${roleOnJob} from ${start.toISOString()} to ${end.toISOString()}.`,
+        });
+        return created;
       });
       return NextResponse.json({ id: assignment.id }, { status: 201 });
     } catch (error) {

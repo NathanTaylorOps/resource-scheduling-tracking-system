@@ -4,6 +4,7 @@ import { WorkOrderStatus, WorkOrderSource, EquipmentStatus } from '@/lib/enums';
 import { applyCompletionToHierarchy } from '@/lib/domain/maintenance';
 import { resolveCounterValue, toDomainPlan } from '@/lib/readiness-service';
 import { apiError } from '@/lib/api';
+import { AuditAction, recordAudit } from '@/lib/audit';
 import { parseJsonBody, optionalString, optionalNumber, NotFoundError, ValidationError, ConflictError } from '@/lib/validate';
 
 /**
@@ -123,6 +124,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           await tx.equipment.update({ where: { id: workOrder.equipmentId }, data: { status: EquipmentStatus.IDLE } });
         }
       }
+
+      await recordAudit(tx, {
+        entityType: 'WorkOrder',
+        entityId: updatedWorkOrder.id,
+        action: AuditAction.WORK_ORDER_COMPLETED,
+        summary:
+          advancedPlans.length > 0
+            ? `Work order completed; advanced ${advancedPlans.length} maintenance schedule${advancedPlans.length === 1 ? '' : 's'}.`
+            : 'Work order completed.',
+      });
 
       return { workOrderId: updatedWorkOrder.id, advancedPlans };
     });
