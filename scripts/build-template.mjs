@@ -24,8 +24,10 @@ function run(modulePath, args, env) {
 await rm(templatePath, { force: true });
 
 const env = { DATABASE_URL: 'file:./template.db' };
-const prismaBin = require.resolve('prisma/build/index.js');
-const tsxBin = require.resolve('tsx/dist/cli.mjs');
+const prismaPackage = require.resolve('prisma/package.json');
+const tsxPackage = require.resolve('tsx/package.json');
+const prismaBin = path.join(path.dirname(prismaPackage), 'build', 'index.js');
+const tsxBin = path.join(path.dirname(tsxPackage), 'dist', 'cli.mjs');
 
 await run(prismaBin, ['db', 'push', '--skip-generate'], env);
 await run(tsxBin, ['prisma/seed.ts'], env);
