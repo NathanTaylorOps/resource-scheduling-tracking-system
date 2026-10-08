@@ -99,7 +99,12 @@ async function main() {
     const href = await jobLink.getAttribute('href');
     if (!href) throw new Error('Could not locate a seeded job link from the dashboard');
     await open(page, href);
-    await shot(page, 'job-readiness', { fullPage: true });
+    await page.screenshot({
+      path: `${OUT}/job-readiness.png`,
+      clip: { x: 0, y: 0, width: 1440, height: 840 },
+      animations: 'disabled',
+    });
+    console.log('captured job-readiness.png');
 
     await open(page, '/equipment');
     await shot(page, 'equipment');
