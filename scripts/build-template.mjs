@@ -1,12 +1,14 @@
 import { rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const templatePath = path.join(process.cwd(), 'prisma', 'template.db');
 
-function run(command, args, env) {
+function run(modulePath, args, env) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(process.execPath, [modulePath, ...args], {
       stdio: 'inherit',
       env: { ...process.env, ...env },
       shell: false,
@@ -14,7 +16,7 @@ function run(command, args, env) {
     child.once('error', reject);
     child.once('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`${command} exited with code ${code}`));
+      else reject(new Error(`${path.basename(modulePath)} exited with code ${code}`));
     });
   });
 }
@@ -22,7 +24,8 @@ function run(command, args, env) {
 await rm(templatePath, { force: true });
 
 const env = { DATABASE_URL: 'file:./template.db' };
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const prismaBin = require.resolve('prisma/build/index.js');
+const tsxBin = require.resolve('tsx/dist/cli.mjs');
 
-await run(npx, ['prisma', 'db', 'push', '--skip-generate'], env);
-await run(npx, ['tsx', 'prisma/seed.ts'], env);
+await run(prismaBin, ['db', 'push', '--skip-generate'], env);
+await run(tsxBin, ['prisma/seed.ts'], env);
