@@ -3,11 +3,25 @@ import { mkdir } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
+import net from 'node:net';
 
 const require = createRequire(import.meta.url);
-const PORT = 3101;
-const BASE_URL = `http://localhost:${PORT}`;
-const OUT = process.env.PORTFOLIO_SCREENSHOTS_DIR || 'artifacts/portfolio-screenshots';
+let BASE_URL;
+
+async function reserveFreePort() {
+  return await new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address ? address.port : null;
+      probe.close((err) => (err ? reject(err) : resolve(port)));
+    });
+  });
+}
+const OUT = process.env.PORTFOLIO_SCREENSHOTS_DIR || 'docs/assets';
 
 async function waitForServer(url, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
@@ -39,22 +53,39 @@ async function shot(page, name, options = {}) {
 
 async function main() {
   await mkdir(OUT, { recursive: true });
+  const port = await reserveFreePort();
+  if (!port) throw new Error('Could not allocate a free local port for screenshot capture');
+  BASE_URL = `http://127.0.0.1:${port}`;
   const nextBin = require.resolve('next/dist/bin/next');
-  const server = spawn(process.execPath, [nextBin, 'start', '-p', String(PORT)], {
+  const server = spawn(process.execPath, [nextBin, 'start', '-H', '127.0.0.1', '-p', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env },
   });
 
   let browser;
+  let serverOutput = '';
+  server.stdout.on('data', (d) => (serverOutput += d.toString()));
+  server.stderr.on('data', (d) => (serverOutput += d.toString()));
   try {
     await waitForServer(BASE_URL);
     browser = await chromium.launch();
+
+    const sessionId = randomUUID();
 
     const desktop = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
       reducedMotion: 'reduce',
     });
+    await desktop.addCookies([
+      {
+        name: 'rsts_session',
+        value: sessionId,
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
     const page = await desktop.newPage();
 
     await open(page, '/');
@@ -68,7 +99,12 @@ async function main() {
     const href = await jobLink.getAttribute('href');
     if (!href) throw new Error('Could not locate a seeded job link from the dashboard');
     await open(page, href);
-    await shot(page, 'job-readiness', { fullPage: true });
+    await page.screenshot({
+      path: `${OUT}/job-readiness.png`,
+      clip: { x: 0, y: 0, width: 1440, height: 840 },
+      animations: 'disabled',
+    });
+    console.log('captured job-readiness.png');
 
     await open(page, '/equipment');
     await shot(page, 'equipment');
@@ -80,10 +116,23 @@ async function main() {
       deviceScaleFactor: 1,
       reducedMotion: 'reduce',
     });
+    await mobile.addCookies([
+      {
+        name: 'rsts_session',
+        value: sessionId,
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
     const mobilePage = await mobile.newPage();
     await open(mobilePage, '/field');
     await shot(mobilePage, 'field-mobile', { fullPage: true });
     await mobile.close();
+  } catch (error) {
+    console.error('\n--- next start output ---');
+    console.error(serverOutput.slice(-12000));
+    throw error;
   } finally {
     if (browser) await browser.close();
     server.kill('SIGTERM');
