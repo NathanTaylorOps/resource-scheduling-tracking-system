@@ -15,7 +15,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:build-template": "node scripts/build-template.mjs",
-    "test:domain": "tsx lib/domain/__tests__/domain.smoke.ts && tsx lib/domain/__tests__/readiness.test.ts && tsx lib/__tests__/csv.test.ts && tsx lib/__tests__/csv-import.test.ts",
+    "test:domain": "tsx lib/domain/__tests__/field-crew.test.ts && tsx lib/domain/__tests__/domain.smoke.ts && tsx lib/domain/__tests__/readiness.test.ts && tsx lib/__tests__/csv.test.ts && tsx lib/__tests__/csv-import.test.ts",
     "typecheck": "tsc --noEmit",
     "test:web": "node scripts/smoke.mjs",
     "test:integration": "tsx lib/__tests__/workflows.integration.test.ts",
