@@ -35,3 +35,18 @@ export const NAV_LINKS: NavLink[] = [
   { href: '/schedule', label: 'Schedule', icon: Calendar },
   { href: '/map', label: 'Map', icon: MapPin },
 ];
+
+/** Navigation groups do not change URLs or gate access. They surface the
+ * application's existing operating workflows in the order people use them.
+ */
+export const NAV_GROUPS: Array<{ title: string; links: NavLink[] }> = [
+  { title: 'Command', links: NAV_LINKS.filter(link => ['/', '/actions', '/portfolio'].includes(link.href)) },
+  { title: 'Planning', links: NAV_LINKS.filter(link => ['/jobs', '/schedule', '/map'].includes(link.href)) },
+  { title: 'Resources', links: NAV_LINKS.filter(link => ['/workers', '/subcontractors', '/equipment'].includes(link.href)) },
+  { title: 'Assurance', links: NAV_LINKS.filter(link => ['/expiring'].includes(link.href)) },
+  { title: 'Field', links: NAV_LINKS.filter(link => ['/field'].includes(link.href)) },
+];
+
+export function isNavLinkActive(href: string, pathname: string): boolean {
+  return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(href + '/');
+}
