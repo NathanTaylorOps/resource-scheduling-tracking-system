@@ -26,7 +26,7 @@ try {
   for (let i = 0; i < 100; i++) {
     if (next.exitCode !== null) throw new Error('Next.js exited before becoming ready');
     try {
-      const response = await fetch(base);
+      const response = await fetch(`${base}/favicon.ico`);
       if (response.status < 500) { ready = true; break; }
     } catch { /* booting */ }
     await delay(250);
