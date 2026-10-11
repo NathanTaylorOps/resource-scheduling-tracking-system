@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { SESSION_COOKIE, isValidSessionId } from './session';
 import { disconnectThenRemove } from './session-disposal';
-import { acquireSessionLease, eligibleForSessionDisposal } from './session-leases';
+import { acquireSessionLease, eligibleForSessionDisposal, selectCapacityEvictionCandidate } from './session-leases';
 import { createAsyncGate } from './session-provisioning';
 import { warmAllJobsWeather } from './weather/cache';
 
@@ -81,6 +81,7 @@ function disposeSession(sessionId: string): Promise<void> {
     throw new Error('Cannot dispose a session with active requests.');
   }
   if (entry) pool.delete(sessionId);
+  if (process.env.RSTS_SESSION_TEST_TRACE === '1') console.info(`RSTS_TEST_POOL_SIZE ${pool.size}`);
 
   const disposal = (async () => {
     // If disconnect fails, preserve the file rather than removing an active
@@ -217,14 +218,12 @@ export async function getDb(): Promise<PrismaClient> {
   }
 
   if (pool.size >= MAX_CONCURRENT_SESSIONS) {
-    const idleCandidates = [...pool.entries()]
-      .filter(([, entry]) => (entry.activeLeases ?? 0) === 0)
-      .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
-    if (idleCandidates.length === 0) {
+    const candidate = selectCapacityEvictionCandidate(pool);
+    if (!candidate) {
       // Preserve in-flight requests instead of evicting their live database.
       throw new Error('Demo session capacity reached; try again after another request finishes.');
     }
-    await disposeSession(idleCandidates[0][0]);
+    await disposeSession(candidate);
   }
 
   ensureSessionDatabase(sessionId);
@@ -236,6 +235,7 @@ export async function getDb(): Promise<PrismaClient> {
   const client = new PrismaClient({ datasourceUrl: `file:${sessionDbPath(sessionId)}?connection_limit=1` });
   const entry: PooledClient = { client, lastUsedAt: Date.now(), activeLeases: 0 };
   pool.set(sessionId, entry);
+  if (process.env.RSTS_SESSION_TEST_TRACE === '1') console.info(`RSTS_TEST_POOL_SIZE ${pool.size}`);
   // Integration-test-only marker; never log session identifiers in normal operation.
   if (process.env.RSTS_SESSION_TEST_TRACE === '1') {
     console.info('RSTS_TEST_SESSION_CLIENT_CREATED');
