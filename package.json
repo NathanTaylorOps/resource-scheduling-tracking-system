@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "test:web": "node scripts/smoke.mjs",
     "test:integration": "tsx lib/__tests__/workflows.integration.test.ts",
+    "test:session-disposal": "tsx lib/__tests__/session-disposal.test.ts",
     "capture:portfolio": "npm run db:build-template && npm run build && node scripts/capture-portfolio.mjs"
   },
   "prisma": {

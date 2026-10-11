@@ -74,6 +74,9 @@ jobs:
       - name: Run database-backed integration tests
         run: npm run test:integration
 
+      - name: Test session disposal ordering
+        run: npm run test:session-disposal
+
       - name: Build
         run: npm run build
 

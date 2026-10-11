@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SESSION_COOKIE, isValidSessionId } from './session';
+import { disconnectThenRemove } from './session-disposal';
 import { warmAllJobsWeather } from './weather/cache';
 
 // Where each visitor's private SQLite file lives. Local disk on whatever
@@ -60,16 +61,31 @@ function sessionDbPath(sessionId: string): string {
   return resolved;
 }
 
-function disposeSession(sessionId: string): void {
+// Serialize disposal per session so no new connection can open against a
+// database file while the prior Prisma client is still disconnecting.
+const pendingDisposals = new Map<string, Promise<void>>();
+
+function disposeSession(sessionId: string): Promise<void> {
+  const pending = pendingDisposals.get(sessionId);
+  if (pending) return pending;
+  if (!isValidSessionId(sessionId)) return Promise.resolve();
+
   const entry = pool.get(sessionId);
-  if (entry) {
-    // Fire-and-forget: a slow disconnect shouldn't hold up the request that
-    // triggered this cleanup.
-    entry.client.$disconnect().catch(() => {});
-    pool.delete(sessionId);
-  }
-  if (!isValidSessionId(sessionId)) return;
-  fs.rm(sessionDbPath(sessionId), { force: true }, () => {});
+  if (entry) pool.delete(sessionId);
+
+  const disposal = (async () => {
+    // If disconnect fails, preserve the file rather than removing an active
+    // SQLite database. A later orphan sweep can retry removal.
+    await disconnectThenRemove(
+      () => entry ? entry.client.$disconnect() : Promise.resolve(),
+      () => fs.promises.rm(sessionDbPath(sessionId), { force: true }),
+    );
+  })();
+  pendingDisposals.set(sessionId, disposal);
+  void disposal.finally(() => {
+    pendingDisposals.delete(sessionId);
+  }).catch(() => {});
+  return disposal;
 }
 
 /**
@@ -80,11 +96,11 @@ function disposeSession(sessionId: string): void {
  * the honest equivalent. A server can't detect a closed tab, so a timed
  * idle sweep is what "cleaned up after you leave" actually means here.
  */
-function sweepIdleSessions(): void {
+async function sweepIdleSessions(): Promise<void> {
   const now = Date.now();
   for (const [sessionId, entry] of pool) {
     if (now - entry.lastUsedAt > IDLE_TIMEOUT_MS) {
-      disposeSession(sessionId);
+      await disposeSession(sessionId);
     }
   }
 }
@@ -133,7 +149,7 @@ function sweepOrphanedSessionFiles(): void {
     if (!entry.isFile() || !entry.name.endsWith('.db')) continue;
     const sessionId = entry.name.slice(0, -3);
     if (!isValidSessionId(sessionId)) continue; // Not one of ours — leave it alone.
-    if (pool.has(sessionId)) continue; // Live in this process — sweepIdleSessions owns it.
+    if (pool.has(sessionId) || pendingDisposals.has(sessionId)) continue; // Live or closing — leave it alone.
     const filePath = path.join(SESSIONS_DIR, entry.name);
     try {
       const stat = fs.statSync(filePath);
@@ -174,9 +190,14 @@ export async function getDb(): Promise<PrismaClient> {
   const now = Date.now();
   if (now - lastSessionSweepAt >= SESSION_SWEEP_INTERVAL_MS) {
     lastSessionSweepAt = now;
-    sweepIdleSessions();
+    await sweepIdleSessions();
     sweepOrphanedSessionFiles();
   }
+
+  // An eviction or idle sweep may still be closing this session.
+  // Never open a new client until file cleanup has finished.
+  const closing = pendingDisposals.get(sessionId);
+  if (closing) await closing;
 
   const existing = pool.get(sessionId);
   if (existing) {
@@ -186,7 +207,7 @@ export async function getDb(): Promise<PrismaClient> {
 
   if (pool.size >= MAX_CONCURRENT_SESSIONS) {
     const [oldestSessionId] = [...pool.entries()].sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt)[0];
-    disposeSession(oldestSessionId);
+    await disposeSession(oldestSessionId);
   }
 
   ensureSessionDatabase(sessionId);
