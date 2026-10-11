@@ -44,11 +44,22 @@ try {
   }
   assert.ok(ready, 'Server never became ready');
 
-  const heldResponsePromise = fetch(`${base}/api/__test/session-lease`, {
+  const heldResponsePromise = fetch(`${base}/api/test-session-lease`, {
     headers: { cookie: `rsts_session=${heldId}` },
     signal: AbortSignal.timeout(60000),
   });
-  await waitForFile(path.join(holdDir, 'ready'), 20000);
+  // A failed route should produce an immediate diagnostic, not a blind timeout.
+  const readyFile = path.join(holdDir, 'ready');
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 20000) {
+    try { await access(readyFile); break; } catch { /* waiting */ }
+    const outcome = await Promise.race([
+      heldResponsePromise.then(response => ({ earlyResponse: response.status })).catch(error => ({ earlyError: String(error) })),
+      sleep(100).then(() => null),
+    ]);
+    if (outcome) throw new Error(`Held request ended before reaching barrier: ${JSON.stringify(outcome)}`);
+  }
+  await waitForFile(readyFile, 1000);
   await access(path.join(sessionDir, `${heldId}.db`));
 
   const results = await Promise.all(Array.from({ length: 44 }, async (_, i) => {
