@@ -18,4 +18,5 @@ assert.deepEqual(assignmentsForWorkday(cases, day).map(x => x.name), [
 ]);
 assert.deepEqual(assignmentsForWorkday([], day), []);
 assert.throws(() => assignmentsForWorkday(cases, 'invalid'), /Invalid workday/);
+assert.throws(() => assignmentsForWorkday(cases, '2026-02-30'), /Invalid workday/);
 console.log('PASS field crew local-day half-open assignment selection');
