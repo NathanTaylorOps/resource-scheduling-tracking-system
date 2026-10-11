@@ -77,10 +77,23 @@ function groupBy<T, K>(rows: T[], keyOf: (row: T) => K): Map<K, T[]> {
  * these jobs), once for the whole batch rather than once per job.
  */
 export async function computeReadinessForJobs(jobIds: string[]): Promise<Map<string, ReadinessResult>> {
+  if (jobIds.length === 0) return new Map();
+  return computeReadinessForJobsWithDb(jobIds, await getDb());
+}
+
+/**
+ * Runs the same readiness evaluation with an explicit database dependency.
+ * Production services and database-backed tests can call this without a
+ * browser cookie or request-scoped database lookup. The public wrapper above
+ * preserves the existing isolated-demo behavior.
+ */
+export async function computeReadinessForJobsWithDb(
+  jobIds: string[],
+  prisma: Awaited<ReturnType<typeof getDb>>,
+): Promise<Map<string, ReadinessResult>> {
   const results = new Map<string, ReadinessResult>();
   if (jobIds.length === 0) return results;
 
-  const prisma = await getDb();
   const now = new Date();
 
   const [jobs, roleRequirements, equipment, reservations, forecastCaches, permits] = await Promise.all([
