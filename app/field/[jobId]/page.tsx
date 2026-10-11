@@ -4,7 +4,8 @@ import { getDb } from '@/lib/db';
 import { computeJobReadiness, DUE_SOON_WINDOW_DAYS, DAY_MS } from '@/lib/readiness-service';
 import { getCertificationStatus, summarizeCertificationStatuses } from '@/lib/domain/certifications';
 import { permitsStatusFrom } from '@/lib/domain/readiness';
-import { isPastCalendarDate } from '@/lib/domain/dates';
+import { isPastCalendarDate, todayISO, parseDateOnly } from '@/lib/domain/dates';
+import { assignmentsForWorkday } from '@/lib/domain/field-crew';
 import { StatusBadge, OVERALL_READINESS_LABEL } from '@/components/StatusBadge';
 import { DailyLogForm } from '@/components/DailyLogForm';
 import { ToolboxTalkForm } from '@/components/ToolboxTalkForm';
@@ -32,7 +33,9 @@ export default async function FieldJobPage(props: { params: Promise<{ jobId: str
   // Same-day lookup by the compound unique key, rather than fetching and
   // filtering every log — DailyLog is one-per-job-per-day, so this either
   // finds today's entry or confirms there isn't one yet.
-  const todaysLogDate = new Date(now.toISOString().slice(0, 10));
+  const workday = todayISO();
+  const todaysLogDate = parseDateOnly(workday)!;
+  const todaysAssignments = assignmentsForWorkday(job.assignments, workday);
   const [readiness, equipment, permits, todaysLog, allWorkers] = await Promise.all([
     computeJobReadiness(job.id),
     prisma.equipment.findMany({ where: { currentJobId: job.id } }),
@@ -41,7 +44,7 @@ export default async function FieldJobPage(props: { params: Promise<{ jobId: str
     prisma.worker.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
 
-  const crew = [...new Map(job.assignments.map((a) => [a.worker.id, { id: a.worker.id, name: a.worker.name }])).values()];
+  const crew = [...new Map(todaysAssignments.map((a) => [a.worker.id, { id: a.worker.id, name: a.worker.name }])).values()];
   const crewIds = new Set(crew.map((w) => w.id));
   // A visiting PM, GM, or superintendent covering the log isn't necessarily
   // staffed on this job — see DailyLogForm's own comment on otherWorkers.
@@ -67,9 +70,10 @@ export default async function FieldJobPage(props: { params: Promise<{ jobId: str
       </div>
 
       <div className="card">
-        <h2 className="mb-3 font-semibold">Crew today</h2>
+        <h2 className="mb-1 font-semibold">Crew scheduled today</h2>
+        <p className="mb-3 text-xs text-zinc-500">Based on assignment dates for {workday}. This is the planned roster, not verified site attendance.</p>
         <ul className="divide-y divide-outdoor-border">
-          {job.assignments.map((a) => {
+          {todaysAssignments.map((a) => {
             const statuses = a.worker.certifications.map(
               (c) => getCertificationStatus(c.expiryDate, now, undefined, c.renewalPattern, c.renewalFiledDate).status,
             );
@@ -93,7 +97,7 @@ export default async function FieldJobPage(props: { params: Promise<{ jobId: str
               </li>
             );
           })}
-          {job.assignments.length === 0 && <p className="py-2 text-sm text-zinc-500">No crew assigned yet.</p>}
+          {todaysAssignments.length === 0 && <p className="py-2 text-sm text-zinc-500">No crew scheduled for today.</p>}
         </ul>
       </div>
 
