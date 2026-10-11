@@ -21,6 +21,7 @@
     "test:integration": "tsx lib/__tests__/workflows.integration.test.ts",
     "test:session-concurrency": "node scripts/test-session-concurrency.mjs",
     "test:session-capacity": "node scripts/test-session-capacity.mjs",
+    "test:held-session": "node scripts/test-held-session-eviction.mjs",
     "test:session-disposal": "tsx lib/__tests__/session-disposal.test.ts && tsx lib/__tests__/session-leases.test.ts && tsx lib/__tests__/session-rate-limit.test.ts && tsx lib/__tests__/session-provisioning.test.ts",
     "capture:portfolio": "npm run db:build-template && npm run build && node scripts/capture-portfolio.mjs"
   },

@@ -98,6 +98,9 @@ jobs:
       - name: Stress session capacity with 44 independent visitors
         run: npm run test:session-capacity
 
+      - name: Verify held HTTP request survives eviction pressure
+        run: npm run test:held-session
+
 
   portfolio-screenshots:
     if: github.event_name == 'pull_request'
