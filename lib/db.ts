@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SESSION_COOKIE, isValidSessionId } from './session';
+import { disconnectThenRemove } from './session-disposal';
 import { warmAllJobsWeather } from './weather/cache';
 
 // Where each visitor's private SQLite file lives. Local disk on whatever
@@ -75,8 +76,10 @@ function disposeSession(sessionId: string): Promise<void> {
   const disposal = (async () => {
     // If disconnect fails, preserve the file rather than removing an active
     // SQLite database. A later orphan sweep can retry removal.
-    if (entry) await entry.client.$disconnect();
-    await fs.promises.rm(sessionDbPath(sessionId), { force: true });
+    await disconnectThenRemove(
+      () => entry ? entry.client.$disconnect() : Promise.resolve(),
+      () => fs.promises.rm(sessionDbPath(sessionId), { force: true }),
+    );
   })();
   pendingDisposals.set(sessionId, disposal);
   void disposal.finally(() => {
