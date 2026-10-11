@@ -236,6 +236,10 @@ export async function getDb(): Promise<PrismaClient> {
   const client = new PrismaClient({ datasourceUrl: `file:${sessionDbPath(sessionId)}?connection_limit=1` });
   const entry: PooledClient = { client, lastUsedAt: Date.now(), activeLeases: 0 };
   pool.set(sessionId, entry);
+  // Integration-test-only marker; never log session identifiers in normal operation.
+  if (process.env.RSTS_SESSION_TEST_TRACE === '1') {
+    console.info('RSTS_TEST_SESSION_CLIENT_CREATED');
+  }
   acquireSessionLease(entry, (release) => after(release));
 
   // Fire-and-forget: warm every job's weather cache right away rather than
