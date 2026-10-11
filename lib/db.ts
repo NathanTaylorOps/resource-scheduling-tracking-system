@@ -81,6 +81,7 @@ function disposeSession(sessionId: string): Promise<void> {
     throw new Error('Cannot dispose a session with active requests.');
   }
   if (entry) pool.delete(sessionId);
+  if (process.env.RSTS_SESSION_TEST_TRACE === '1') console.info(`RSTS_TEST_POOL_SIZE ${pool.size}`);
 
   const disposal = (async () => {
     // If disconnect fails, preserve the file rather than removing an active
@@ -236,6 +237,7 @@ export async function getDb(): Promise<PrismaClient> {
   const client = new PrismaClient({ datasourceUrl: `file:${sessionDbPath(sessionId)}?connection_limit=1` });
   const entry: PooledClient = { client, lastUsedAt: Date.now(), activeLeases: 0 };
   pool.set(sessionId, entry);
+  if (process.env.RSTS_SESSION_TEST_TRACE === '1') console.info(`RSTS_TEST_POOL_SIZE ${pool.size}`);
   // Integration-test-only marker; never log session identifiers in normal operation.
   if (process.env.RSTS_SESSION_TEST_TRACE === '1') {
     console.info('RSTS_TEST_SESSION_CLIENT_CREATED');
