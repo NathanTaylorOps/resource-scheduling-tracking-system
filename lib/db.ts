@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { SESSION_COOKIE, isValidSessionId } from './session';
 import { disconnectThenRemove } from './session-disposal';
-import { acquireSessionLease, eligibleForSessionDisposal } from './session-leases';
+import { acquireSessionLease, eligibleForSessionDisposal, selectCapacityEvictionCandidate } from './session-leases';
 import { createAsyncGate } from './session-provisioning';
 import { warmAllJobsWeather } from './weather/cache';
 
@@ -218,14 +218,12 @@ export async function getDb(): Promise<PrismaClient> {
   }
 
   if (pool.size >= MAX_CONCURRENT_SESSIONS) {
-    const idleCandidates = [...pool.entries()]
-      .filter(([, entry]) => (entry.activeLeases ?? 0) === 0)
-      .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
-    if (idleCandidates.length === 0) {
+    const candidate = selectCapacityEvictionCandidate(pool);
+    if (!candidate) {
       // Preserve in-flight requests instead of evicting their live database.
       throw new Error('Demo session capacity reached; try again after another request finishes.');
     }
-    await disposeSession(idleCandidates[0][0]);
+    await disposeSession(candidate);
   }
 
   ensureSessionDatabase(sessionId);
