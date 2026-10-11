@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { acquireSessionLease, eligibleForSessionDisposal } from '../session-leases';
+import { acquireSessionLease, eligibleForSessionDisposal, selectCapacityEvictionCandidate } from '../session-leases';
 
 async function main() {
   const entry = { activeLeases: 0, lastUsedAt: 100 };
@@ -23,6 +23,20 @@ async function main() {
     /request callback rejected/,
   );
   assert.equal(failed.activeLeases, 0, 'failed registration must not leak a lease');
+  const capacityPool = new Map([
+    ['active-oldest', { activeLeases: 2, lastUsedAt: 1 }],
+    ['idle-middle', { activeLeases: 0, lastUsedAt: 3 }],
+    ['idle-newest', { activeLeases: 0, lastUsedAt: 8 }],
+  ]);
+  assert.equal(selectCapacityEvictionCandidate(capacityPool), 'idle-middle',
+    'an active request may not be chosen even if its session is oldest');
+  capacityPool.get('idle-middle')!.activeLeases = 1;
+  capacityPool.get('idle-newest')!.activeLeases = 1;
+  assert.equal(selectCapacityEvictionCandidate(capacityPool), undefined,
+    'fully leased pool must refuse eviction');
+  capacityPool.get('active-oldest')!.activeLeases = 0;
+  assert.equal(selectCapacityEvictionCandidate(capacityPool), 'active-oldest',
+    'completed requests become eligible after lease release');
   console.log('PASS request leases protect active work and release correctly');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
