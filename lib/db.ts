@@ -1,10 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { cookies } from 'next/headers';
+import { after } from 'next/server';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SESSION_COOKIE, isValidSessionId } from './session';
 import { disconnectThenRemove } from './session-disposal';
+import { acquireSessionLease, eligibleForSessionDisposal } from './session-leases';
 import { warmAllJobsWeather } from './weather/cache';
 
 // Where each visitor's private SQLite file lives. Local disk on whatever
@@ -31,6 +33,7 @@ let lastSessionSweepAt = 0;
 interface PooledClient {
   client: PrismaClient;
   lastUsedAt: number;
+  activeLeases: number;
 }
 
 // Standard Next.js dev-mode HMR-safety pattern: without stashing the pool on
@@ -71,6 +74,9 @@ function disposeSession(sessionId: string): Promise<void> {
   if (!isValidSessionId(sessionId)) return Promise.resolve();
 
   const entry = pool.get(sessionId);
+  if (entry && (entry.activeLeases ?? 0) > 0) {
+    throw new Error('Cannot dispose a session with active requests.');
+  }
   if (entry) pool.delete(sessionId);
 
   const disposal = (async () => {
@@ -99,7 +105,7 @@ function disposeSession(sessionId: string): Promise<void> {
 async function sweepIdleSessions(): Promise<void> {
   const now = Date.now();
   for (const [sessionId, entry] of pool) {
-    if (now - entry.lastUsedAt > IDLE_TIMEOUT_MS) {
+    if (eligibleForSessionDisposal({ ...entry, activeLeases: entry.activeLeases ?? 0 }, now, IDLE_TIMEOUT_MS)) {
       await disposeSession(sessionId);
     }
   }
@@ -202,12 +208,19 @@ export async function getDb(): Promise<PrismaClient> {
   const existing = pool.get(sessionId);
   if (existing) {
     existing.lastUsedAt = Date.now();
+    acquireSessionLease(existing, (release) => after(release));
     return existing.client;
   }
 
   if (pool.size >= MAX_CONCURRENT_SESSIONS) {
-    const [oldestSessionId] = [...pool.entries()].sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt)[0];
-    await disposeSession(oldestSessionId);
+    const idleCandidates = [...pool.entries()]
+      .filter(([, entry]) => (entry.activeLeases ?? 0) === 0)
+      .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
+    if (idleCandidates.length === 0) {
+      // Preserve in-flight requests instead of evicting their live database.
+      throw new Error('Demo session capacity reached; try again after another request finishes.');
+    }
+    await disposeSession(idleCandidates[0][0]);
   }
 
   ensureSessionDatabase(sessionId);
@@ -217,16 +230,26 @@ export async function getDb(): Promise<PrismaClient> {
   // open tabs, or a background weather refresh landing mid-form-submit)
   // can hit SQLITE_BUSY against the file lock the first one is holding.
   const client = new PrismaClient({ datasourceUrl: `file:${sessionDbPath(sessionId)}?connection_limit=1` });
-  pool.set(sessionId, { client, lastUsedAt: Date.now() });
+  const entry: PooledClient = { client, lastUsedAt: Date.now(), activeLeases: 0 };
+  pool.set(sessionId, entry);
+  acquireSessionLease(entry, (release) => after(release));
 
   // Fire-and-forget: warm every job's weather cache right away rather than
   // leaving it empty until a visitor happens to open each job's own detail
   // page. Never awaited — the request that triggered provisioning shouldn't
   // wait on external fetches, and a failure here must never surface as this
   // request failing.
-  warmAllJobsWeather(client).catch((err) => {
-    console.error('Weather cache warm-up failed for a new session (non-fatal):', err);
-  });
+  // Cache warm-up outlives the first response, so keep an additional lease
+  // until it finishes. The request lease alone would not protect this task.
+  entry.activeLeases += 1;
+  void warmAllJobsWeather(client)
+    .catch((err) => {
+      console.error('Weather cache warm-up failed for a new session (non-fatal):', err);
+    })
+    .finally(() => {
+      entry.activeLeases -= 1;
+      entry.lastUsedAt = Date.now();
+    });
 
   return client;
 }
