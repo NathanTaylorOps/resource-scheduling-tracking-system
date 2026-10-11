@@ -95,6 +95,9 @@ jobs:
       - name: Verify concurrent session provisioning via HTTP
         run: npm run test:session-concurrency
 
+      - name: Stress session capacity with 44 independent visitors
+        run: npm run test:session-capacity
+
 
   portfolio-screenshots:
     if: github.event_name == 'pull_request'
