@@ -8,7 +8,8 @@ export function assignmentsForWorkday<T extends { start: Date; end: Date }>(
   dayKey: string = todayISO(),
 ): T[] {
   const start = parseDateOnly(dayKey);
+  if (!start) throw new Error('Invalid workday');
   const end = parseDateOnly(addCalendarDays(dayKey, 1));
-  if (!start || !end) throw new Error('Invalid workday');
+  if (!end) throw new Error('Invalid workday');
   return assignments.filter(a => a.start < end && a.end > start);
 }
