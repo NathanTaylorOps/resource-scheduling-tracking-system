@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE, isValidSessionId } from '@/lib/session';
+import { recordSessionCreation } from '@/lib/session-rate-limit';
 
 /**
  * Assigns every visitor a private session cookie on their first request, so
@@ -43,16 +44,9 @@ function clientIp(request: NextRequest): string {
   return request.headers.get('x-real-ip') ?? 'unknown';
 }
 
-/** True if this IP has already created SESSION_RATE_LIMIT sessions within the current rolling window; otherwise records this creation and returns false. */
+/** Returns whether this request may create another temporary demo session. */
 function isSessionCreationRateLimited(ip: string, now: number): boolean {
-  const recent = (sessionCreationsByIp.get(ip) ?? []).filter((t) => now - t < SESSION_RATE_WINDOW_MS);
-  if (recent.length >= SESSION_RATE_LIMIT) {
-    sessionCreationsByIp.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  sessionCreationsByIp.set(ip, recent);
-  return false;
+  return !recordSessionCreation(sessionCreationsByIp, ip, now, SESSION_RATE_LIMIT, SESSION_RATE_WINDOW_MS);
 }
 
 export function middleware(request: NextRequest) {
@@ -73,6 +67,7 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.cookies.set(SESSION_COOKIE, crypto.randomUUID(), {
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
     // One day — comfortably longer than the 30-minute idle cleanup in
