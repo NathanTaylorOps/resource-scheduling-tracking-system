@@ -34,3 +34,19 @@ export function eligibleForSessionDisposal(
 ): boolean {
   return entry.activeLeases === 0 && now - entry.lastUsedAt > idleTimeoutMs;
 }
+
+/** Only unleased clients are eligible for capacity eviction. */
+export function selectCapacityEvictionCandidate<T extends LeaseEntry>(
+  entries: Map<string, T>,
+): string | undefined {
+  let chosen: string | undefined;
+  let oldest = Infinity;
+  for (const [id, entry] of entries) {
+    if (entry.activeLeases !== 0) continue;
+    if (entry.lastUsedAt < oldest) {
+      chosen = id;
+      oldest = entry.lastUsedAt;
+    }
+  }
+  return chosen;
+}
