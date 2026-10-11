@@ -7,6 +7,7 @@ import path from 'node:path';
 import { SESSION_COOKIE, isValidSessionId } from './session';
 import { disconnectThenRemove } from './session-disposal';
 import { acquireSessionLease, eligibleForSessionDisposal } from './session-leases';
+import { createAsyncGate } from './session-provisioning';
 import { warmAllJobsWeather } from './weather/cache';
 
 // Where each visitor's private SQLite file lives. Local disk on whatever
@@ -67,6 +68,8 @@ function sessionDbPath(sessionId: string): string {
 // Serialize disposal per session so no new connection can open against a
 // database file while the prior Prisma client is still disconnecting.
 const pendingDisposals = new Map<string, Promise<void>>();
+// Pool admission, eviction, and first-time creation must share one gate.
+const runProvisioningExclusive = createAsyncGate();
 
 function disposeSession(sessionId: string): Promise<void> {
   const pending = pendingDisposals.get(sessionId);
@@ -190,6 +193,7 @@ export async function getDb(): Promise<PrismaClient> {
     );
   }
 
+  return runProvisioningExclusive(async () => {
   // Run cleanup deterministically at most once per interval. This keeps the
   // request-driven demo architecture (no background worker required) while
   // avoiding random cleanup behaviour that is harder to reason about and test.
@@ -232,6 +236,10 @@ export async function getDb(): Promise<PrismaClient> {
   const client = new PrismaClient({ datasourceUrl: `file:${sessionDbPath(sessionId)}?connection_limit=1` });
   const entry: PooledClient = { client, lastUsedAt: Date.now(), activeLeases: 0 };
   pool.set(sessionId, entry);
+  // Integration-test-only marker; never log session identifiers in normal operation.
+  if (process.env.RSTS_SESSION_TEST_TRACE === '1') {
+    console.info('RSTS_TEST_SESSION_CLIENT_CREATED');
+  }
   acquireSessionLease(entry, (release) => after(release));
 
   // Fire-and-forget: warm every job's weather cache right away rather than
@@ -252,4 +260,5 @@ export async function getDb(): Promise<PrismaClient> {
     });
 
   return client;
+  });
 }
