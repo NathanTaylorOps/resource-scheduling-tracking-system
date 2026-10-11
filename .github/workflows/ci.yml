@@ -92,6 +92,9 @@ jobs:
       - name: Run the UI smoke test (incl. accessibility)
         run: npm run test:web
 
+      - name: Verify concurrent session provisioning via HTTP
+        run: npm run test:session-concurrency
+
 
   portfolio-screenshots:
     if: github.event_name == 'pull_request'
