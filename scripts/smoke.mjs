@@ -78,6 +78,45 @@ async function main() {
       await heading.waitFor({ state: 'visible', timeout: 5000 });
     });
 
+    await check('absolute social image metadata is present', async () => {
+      const og = await page.locator('meta[property="og:image"]').evaluateAll(
+        (elements) => elements.map((element) => element.getAttribute('content')),
+      );
+      const twitter = await page.locator('meta[name="twitter:image"]').evaluateAll(
+        (elements) => elements.map((element) => element.getAttribute('content')),
+      );
+      const all = [...og, ...twitter].filter(Boolean);
+      if (!og.some((url) => url?.includes('/opengraph-image'))) {
+        throw new Error('Missing Open Graph screenshot image: ' + JSON.stringify(og));
+      }
+      if (!twitter.some((url) => url?.includes('/opengraph-image'))) {
+        throw new Error('Missing Twitter screenshot image: ' + JSON.stringify(twitter));
+      }
+      for (const url of all) {
+        if (!url?.startsWith('https://')) throw new Error('Metadata image URL is not absolute HTTPS: ' + url);
+      }
+    });
+
+    await check('share image serves a real 1200x630 PNG', async () => {
+      // Request the image from the running local deployment, not from GitHub.
+      const response = await fetch(BASE_URL + '/opengraph-image');
+      if (!response.ok) throw new Error('GET /opengraph-image returned ' + response.status);
+      if (!(response.headers.get('content-type') || '').includes('image/png')) {
+        throw new Error('Share image has incorrect MIME type: ' + response.headers.get('content-type'));
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > 5_000_000 || bytes.length < 1000) {
+        throw new Error('Share image size is invalid: ' + bytes.length);
+      }
+      if (bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+        throw new Error('Share image is not valid PNG');
+      }
+      const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
+      if (width !== 1200 || height !== 630) {
+        throw new Error('Share image has incorrect dimensions: ' + width + 'x' + height);
+      }
+    });
+
     console.log('Checking accessibility (axe-core, serious/critical only) across pages...');
     for (const path of PAGES_TO_CHECK) {
       await check(`no serious/critical accessibility violations on ${path}`, async () => {
