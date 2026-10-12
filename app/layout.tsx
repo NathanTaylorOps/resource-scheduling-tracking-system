@@ -4,19 +4,28 @@ import { Nav } from '@/components/Nav';
 import { Sidebar } from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: 'Resource Scheduling & Tracking System',
-  description: 'Crew scheduling, equipment tracking, compliance, and weather risk for a custom-home GC.',
+  metadataBase: new URL('https://resource-scheduling-tracking-system.onrender.com'),
+  title: 'Resource Scheduling & Tracking System | RSTS',
+  description: 'A fictional construction field-operations demo: crew and equipment readiness, compliance, scheduling conflicts and accountable management intervention.',
   openGraph: {
-    title: 'Resource Scheduling & Tracking System',
-    description: 'Crew scheduling, equipment tracking, compliance, and weather risk for a custom-home GC.',
+    title: 'Resource Scheduling & Tracking System | RSTS',
+    description: 'Can this job run as planned? Explore an interactive fictional construction field-operations demo that surfaces resource, compliance and delivery constraints.',
+    images: [{
+      url: '/opengraph-image',
+      width: 1200,
+      height: 630,
+      alt: 'Actual RSTS operations dashboard from a fictional construction demo.',
+      type: 'image/png',
+    }],
     url: 'https://resource-scheduling-tracking-system.onrender.com/',
     siteName: 'Resource Scheduling & Tracking System',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Resource Scheduling & Tracking System',
-    description: 'Crew scheduling, equipment tracking, compliance, and weather risk for a custom-home GC.',
+    title: 'Resource Scheduling & Tracking System | RSTS',
+    description: 'See the real operations demo: construction crew readiness, equipment, compliance and delivery risks.',
+    images: ['/opengraph-image'],
   },
 };
 
