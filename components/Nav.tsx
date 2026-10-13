@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { Logo } from '@/components/Logo';
-import { NAV_LINKS } from '@/components/nav-links';
+import { NAV_GROUPS, isNavLinkActive } from '@/components/nav-links';
 
 /**
  * Mobile-only top bar (md and up gets the persistent Sidebar instead — see
@@ -19,10 +19,6 @@ import { NAV_LINKS } from '@/components/nav-links';
 export function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-
-  function isActive(href: string): boolean {
-    return href === '/' ? pathname === '/' : pathname.startsWith(href);
-  }
 
   return (
     <header className="border-b border-outdoor-border bg-white md:hidden">
@@ -54,17 +50,21 @@ export function Nav() {
           <div className="mb-2">
             <RoleSwitcher />
           </div>
-          <div className="flex flex-col gap-1">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-2 nav-link ${isActive(link.href) ? 'nav-link-active' : ''}`}
-              >
-                <link.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                {link.label}
-              </Link>
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto overscroll-contain pb-3">
+            {NAV_GROUPS.map(group => (
+              <div key={group.title}>
+                <h2 className="mb-1 px-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">{group.title}</h2>
+                <div className="flex flex-col gap-1">
+                  {group.links.map(link => (
+                    <Link key={link.href} href={link.href} onClick={() => setOpen(false)}
+                      aria-current={isNavLinkActive(link.href, pathname) ? 'page' : undefined}
+                      className={`flex min-h-[44px] items-center gap-3 nav-link ${isNavLinkActive(link.href, pathname) ? 'nav-link-active' : ''}`}>
+                      <link.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </nav>

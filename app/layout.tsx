@@ -33,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-zinc-900 focus:shadow-lg">Skip to main content</a>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -58,7 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Sidebar />
           <div className="min-w-0 flex-1">
             <Nav />
-            <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+            <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">{children}</main>
           </div>
         </div>
       </body>
